@@ -18,7 +18,8 @@ SUBDIRS += \
 	ROPTool \
 	References \
 	SymbolViewer \
-    Backtrace
+	Backtrace \
+	InstructionFinder
 
 unix {
 	!macx {

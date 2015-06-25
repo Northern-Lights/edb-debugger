@@ -60,7 +60,7 @@ public:
 	QString get_comment(edb::address_t address);
 	void clear_comments();
 
-signals:
+Q_SIGNALS:
 	void signal_updated();
 
 public Q_SLOTS:

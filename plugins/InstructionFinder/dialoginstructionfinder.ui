@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DialogInstructionFinder</class>
+ <widget class="QDialog" name="DialogInstructionFinder">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>600</width>
+    <height>450</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Instruction Finder</string>
+  </property>
+  <widget class="QWidget" name="verticalLayoutWidget">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>601</width>
+     <height>451</height>
+    </rect>
+   </property>
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <property name="sizeConstraint">
+     <enum>QLayout::SetMaximumSize</enum>
+    </property>
+    <item>
+     <layout class="QHBoxLayout" name="horizontalLayout_3">
+      <item>
+       <widget class="QLabel" name="labelRegion">
+        <property name="toolTip">
+         <string>Input an address to choose the region to search.</string>
+        </property>
+        <property name="whatsThis">
+         <string>Input an address to choose the region to search.</string>
+        </property>
+        <property name="text">
+         <string>Region</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="lineEditRegion">
+        <property name="toolTip">
+         <string>Input an address to choose the region to search.</string>
+        </property>
+        <property name="whatsThis">
+         <string>Input an address to choose the region to search.</string>
+        </property>
+        <property name="placeholderText">
+         <string>&lt;address&gt;</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="checkBoxAnyRegion">
+        <property name="toolTip">
+         <string>Check this to search any region.</string>
+        </property>
+        <property name="whatsThis">
+         <string>Check this to search any region.</string>
+        </property>
+        <property name="text">
+         <string>Any Region</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <layout class="QGridLayout" name="gridLayout">
+      <item row="1" column="3">
+       <widget class="QListWidget" name="listWidgetResults">
+        <property name="toolTip">
+         <string>Search results.</string>
+        </property>
+        <property name="whatsThis">
+         <string>Results of the instruction search.</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="2">
+       <widget class="QTextEdit" name="textEditInstructions">
+        <property name="toolTip">
+         <string>Type the instructions to be searched.</string>
+        </property>
+        <property name="whatsThis">
+         <string>Type the instructions to be searched.</string>
+        </property>
+        <property name="documentTitle">
+         <string/>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="2">
+       <widget class="QLabel" name="labelInstructions">
+        <property name="text">
+         <string>Instructions</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="3">
+       <widget class="QLabel" name="labelResults">
+        <property name="text">
+         <string>Results</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="horizontalLayout_2"/>
+    </item>
+    <item>
+     <widget class="QPushButton" name="pushButtonFind">
+      <property name="text">
+       <string>Find</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QPushButton" name="pushButtonReset">
+      <property name="text">
+       <string>Reset</string>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <zorder>verticalLayoutWidget</zorder>
+  <zorder>checkBoxAnyRegion</zorder>
+  <zorder>horizontalLayoutWidget_3</zorder>
+  <zorder>horizontalLayoutWidget</zorder>
+  <zorder>horizontalLayoutWidget_2</zorder>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
