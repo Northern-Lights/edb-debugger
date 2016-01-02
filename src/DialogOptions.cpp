@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -170,9 +170,12 @@ void DialogOptions::showEvent(QShowEvent *event) {
 
 	ui->chkTTY->setChecked(config.tty_enabled);
 	ui->txtTTY->setText(config.tty_command);
+	
+	ui->chkDeleteStaleSymbols->setChecked(config.remove_stale_symbols);
 
 	ui->chkZerosAreFilling->setChecked(config.zeros_are_filling);
 	ui->chkUppercase->setChecked(config.uppercase_disassembly);
+	ui->chkSmallIntAsDecimal->setChecked(config.small_int_as_decimal);
 
 	ui->chkFindMain->setChecked(config.find_main);
 	ui->chkWarnDataBreakpoint->setChecked(config.warn_on_no_exec_bp);
@@ -195,7 +198,7 @@ void DialogOptions::showEvent(QShowEvent *event) {
 	ui->cmbDataWordWidth->setCurrentIndex(width_to_index(config.data_word_width));
 	ui->cmbDataRowWidth->setCurrentIndex(width_to_index(config.data_row_width));
 
-	ui->chkAddressSemicolon->setChecked(config.show_address_separator);
+	ui->chkAddressColon->setChecked(config.show_address_separator);
 }
 
 //------------------------------------------------------------------------------
@@ -224,8 +227,11 @@ void DialogOptions::closeEvent(QCloseEvent *event) {
 	config.disassembly_font      = ui->disassemblyFont->currentFont().toString();
 	config.tty_command           = ui->txtTTY->text();
 	config.tty_enabled           = ui->chkTTY->isChecked();
+	config.remove_stale_symbols  = ui->chkDeleteStaleSymbols->isChecked();
+	
 	config.zeros_are_filling     = ui->chkZerosAreFilling->isChecked();
 	config.uppercase_disassembly = ui->chkUppercase->isChecked();
+	config.small_int_as_decimal  = ui->chkSmallIntAsDecimal->isChecked();
 
 	config.symbol_path           = ui->txtSymbolDir->text();
 	config.plugin_path           = ui->txtPluginDir->text();
@@ -240,7 +246,7 @@ void DialogOptions::closeEvent(QCloseEvent *event) {
 	config.warn_on_no_exec_bp     = ui->chkWarnDataBreakpoint->isChecked();
 	config.find_main              = ui->chkFindMain->isChecked();
 
-	config.show_address_separator = ui->chkAddressSemicolon->isChecked();
+	config.show_address_separator = ui->chkAddressColon->isChecked();
 
 	config.min_string_length      = ui->spnMinString->value();
 
@@ -250,6 +256,12 @@ void DialogOptions::closeEvent(QCloseEvent *event) {
 	config.data_show_comments = ui->chkDataShowComments->isChecked();
 	config.data_word_width    = 1 << ui->cmbDataWordWidth->currentIndex();
 	config.data_row_width     = 1 << ui->cmbDataRowWidth->currentIndex();
+	
+	CapstoneEDB::Formatter::FormatOptions options = edb::v1::formatter().options();
+	options.capitalization = config.uppercase_disassembly ? CapstoneEDB::Formatter::UpperCase : CapstoneEDB::Formatter::LowerCase;
+	options.smallNumFormat = config.small_int_as_decimal  ? CapstoneEDB::Formatter::SmallNumAsDec : CapstoneEDB::Formatter::SmallNumAsHex;
+	options.syntax=static_cast<CapstoneEDB::Formatter::Syntax>(config.syntax);
+	edb::v1::formatter().setOptions(options);
 
 	event->accept();
 }

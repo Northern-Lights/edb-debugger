@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -46,10 +46,14 @@ void load_plugins(const QString &directory) {
 
 	QDir plugins_dir(qApp->applicationDirPath());
 
-	// TODO: attempt to detect the same plugin being loaded twice
+	// TODO(eteran): attempt to detect the same plugin being loaded twice
+	// NOTE(eteran): if the plugins directory doesn't exist at all, this CD
+	//               will fail and stay in the current directory. This actually
+	//               is VERY nice behavior for us since it will allow
+	//               running from the build directory without further config
 	plugins_dir.cd(directory);
 
-	Q_FOREACH(const QString &file_name, plugins_dir.entryList(QDir::Files)) {
+	for(const QString &file_name: plugins_dir.entryList(QDir::Files)) {
 		if(QLibrary::isLibrary(file_name)) {
 			const QString full_path = plugins_dir.absoluteFilePath(file_name);
 			QPluginLoader loader(full_path);
@@ -58,7 +62,7 @@ void load_plugins(const QString &directory) {
 			if(QObject *const plugin = loader.instance()) {
 
 				// TODO: handle the case where we find more than one core plugin...
-				if(IDebugger *const core_plugin = qobject_cast<IDebugger *>(plugin)) {
+				if(auto core_plugin = qobject_cast<IDebugger *>(plugin)) {
 					if(!edb::v1::debugger_core) {
 						edb::v1::debugger_core = core_plugin;
 					}
@@ -150,8 +154,8 @@ void usage() {
 	std::cerr << " --dump-version            : display terse version string and exit" << std::endl;
 	std::cerr << " --help                    : display this help and exit" << std::endl;
 
-	Q_FOREACH(QObject *plugin, edb::v1::plugin_list()) {
-		if(IPlugin *const p = qobject_cast<IPlugin *>(plugin)) {
+	for(QObject *plugin: edb::v1::plugin_list()) {
+		if(auto p = qobject_cast<IPlugin *>(plugin)) {
 			const QString s = p->extra_arguments();
 			if(!s.isEmpty()) {
 				std::cerr << std::endl;
@@ -184,6 +188,7 @@ int main(int argc, char *argv[]) {
 	QApplication::setOrganizationName("codef00.com");
 	QApplication::setOrganizationDomain("codef00.com");
 	QApplication::setApplicationName("edb");
+	QApplication::setApplicationVersion(edb::version);
 
 	load_translations();
 
@@ -197,8 +202,8 @@ int main(int argc, char *argv[]) {
 
 	// call the init function for each plugin, this is done after
 	// ALL plugins are loaded in case there are inter-plugin dependencies
-	Q_FOREACH(QObject *plugin, edb::v1::plugin_list()) {
-		if(IPlugin *const p = qobject_cast<IPlugin *>(plugin)) {
+	for(QObject *plugin: edb::v1::plugin_list()) {
+		if(auto p = qobject_cast<IPlugin *>(plugin)) {
 
 			const IPlugin::ArgumentStatus r = p->parse_argments(args);
 			switch(r) {

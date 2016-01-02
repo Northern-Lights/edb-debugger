@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -46,17 +46,23 @@ QMenu *Bookmarks::menu(QWidget *parent) {
 
 		// if we are dealing with a main window (and we are...)
 		// add the dock object
-		if(QMainWindow *const main_window = qobject_cast<QMainWindow *>(edb::v1::debugger_ui)) {
+		if(auto main_window = qobject_cast<QMainWindow *>(edb::v1::debugger_ui)) {
 			bookmark_widget_ = new BookmarkWidget;
 
 			// make the dock widget and _name_ it, it is important to name it so
 			// that it's state is saved in the GUI info
-			QDockWidget *const dock_widget = new QDockWidget(tr("Bookmarks"), main_window);
+			auto dock_widget = new QDockWidget(tr("Bookmarks"), main_window);
 			dock_widget->setObjectName(QString::fromUtf8("Bookmarks"));
 			dock_widget->setWidget(bookmark_widget_);
 
 			// add it to the dock
 			main_window->addDockWidget(Qt::RightDockWidgetArea, dock_widget);
+			
+			if(QDockWidget *registersDock  = main_window->findChild<QDockWidget *>("registersDock")) {			
+				main_window->tabifyDockWidget(registersDock, dock_widget);
+				registersDock->show();
+				registersDock->raise();				
+			}
 
 			// make the menu and add the show/hide toggle for the widget
 			menu_ = new QMenu(tr("Bookmarks"), parent);
@@ -66,7 +72,7 @@ QMenu *Bookmarks::menu(QWidget *parent) {
 
 			for(int i = 0; i < 10; ++i) {
 				// create an action and attach it to the signal mapper
-				QShortcut *const action = new QShortcut(QKeySequence(tr("Ctrl+%1").arg(i)), main_window);
+				auto action = new QShortcut(QKeySequence(tr("Ctrl+%1").arg(i)), main_window);
 				signal_mapper_->setMapping(action, (i == 0) ? 9 : (i - 1));
 				connect(action, SIGNAL(activated()), signal_mapper_, SLOT(map()));
 			}
@@ -87,7 +93,7 @@ QList<QAction *> Bookmarks::cpu_context_menu() {
 
 	QList<QAction *> ret;
 
-	QAction *const action_bookmark = new QAction(tr("Add &Bookmark"), this);
+	auto action_bookmark = new QAction(tr("Add &Bookmark"), this);
 	connect(action_bookmark, SIGNAL(triggered()), this, SLOT(add_bookmark_menu()));
 	ret << action_bookmark;
 
@@ -101,7 +107,7 @@ QList<QAction *> Bookmarks::cpu_context_menu() {
 QVariantList Bookmarks::addresses() const {
 	QVariantList r;
 	QList<edb::address_t> a = bookmark_widget_->entries();
-	Q_FOREACH(edb::address_t x, a) {
+	for(edb::address_t x: a) {
 		r.push_back(x);
 	}
 	return r;

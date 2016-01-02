@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@ namespace DebuggerCore {
 // Name: DebuggerCoreBase
 // Desc: constructor
 //------------------------------------------------------------------------------
-DebuggerCoreBase::DebuggerCoreBase() : active_thread_(0), pid_(0) {
+DebuggerCoreBase::DebuggerCoreBase() : pid_(0) {
 }
 
 //------------------------------------------------------------------------------
@@ -69,7 +69,7 @@ IBreakpoint::pointer DebuggerCoreBase::add_breakpoint(edb::address_t address) {
 //------------------------------------------------------------------------------
 IBreakpoint::pointer DebuggerCoreBase::find_breakpoint(edb::address_t address) {
 	if(attached()) {
-		const BreakpointList::const_iterator it = breakpoints_.find(address);
+		auto it = breakpoints_.find(address);
 		if(it != breakpoints_.end()) {
 			return it.value();
 		}
@@ -89,7 +89,7 @@ void DebuggerCoreBase::remove_breakpoint(edb::address_t address) {
 
 	// TODO(eteran): assert paused
 	if(attached()) {
-		const BreakpointList::iterator it = breakpoints_.find(address);
+		auto it = breakpoints_.find(address);
 		if(it != breakpoints_.end()) {
 			breakpoints_.erase(it);
 		}
@@ -127,29 +127,6 @@ edb::pid_t DebuggerCoreBase::pid() const {
 //------------------------------------------------------------------------------
 bool DebuggerCoreBase::attached() const {
 	return pid() != 0;
-}
-
-//------------------------------------------------------------------------------
-// Name: thread_ids
-// Desc:
-//------------------------------------------------------------------------------
-QList<edb::tid_t> DebuggerCoreBase::thread_ids() const {
-	return QList<edb::tid_t>();
-}
-
-//------------------------------------------------------------------------------
-// Name: active_thread
-// Desc:
-//------------------------------------------------------------------------------
-edb::tid_t DebuggerCoreBase::active_thread() const {
-	return active_thread_;
-}
-
-//------------------------------------------------------------------------------
-// Name: set_active_thread
-// Desc:
-//------------------------------------------------------------------------------
-void DebuggerCoreBase::set_active_thread(edb::tid_t) {
 }
 
 }

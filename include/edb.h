@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -24,13 +24,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "IRegion.h"
 #include "IBreakpoint.h"
 #include "Types.h"
+#include "Register.h"
 
-#include <QHash>
+#include <QMap>
 #include <QList>
 #include <QPointer>
 #include <QStringList>
 #include <QVector>
 
+#include <memory>
 
 class ArchProcessor;
 class Configuration;
@@ -79,7 +81,7 @@ EDB_EXPORT IBreakpoint::pointer find_breakpoint(address_t address);
 EDB_EXPORT QString get_breakpoint_condition(address_t address);
 EDB_EXPORT address_t disable_breakpoint(address_t address);
 EDB_EXPORT address_t enable_breakpoint(address_t address);
-EDB_EXPORT void create_breakpoint(address_t address);
+EDB_EXPORT IBreakpoint::pointer create_breakpoint(address_t address);
 EDB_EXPORT void remove_breakpoint(address_t address);
 EDB_EXPORT void set_breakpoint_condition(address_t address, const QString &condition);
 EDB_EXPORT void toggle_breakpoint(address_t address);
@@ -100,8 +102,8 @@ EDB_EXPORT bool get_expression_from_user(const QString &title, const QString pro
 EDB_EXPORT bool eval_expression(const QString &expression, address_t *value);
 
 // ask the user for a value suitable for a register via an input box
-EDB_EXPORT bool get_value_from_user(reg_t &value, const QString &title);
-EDB_EXPORT bool get_value_from_user(reg_t &value);
+EDB_EXPORT bool get_value_from_user(Register &value, const QString &title);
+EDB_EXPORT bool get_value_from_user(Register &value);
 
 // ask the user for a binary string via an input box
 EDB_EXPORT bool get_binary_string_from_user(QByteArray &value, const QString &title, int max_length);
@@ -149,22 +151,23 @@ EDB_EXPORT int get_instruction_bytes(address_t address, quint8 (&buffer)[N]) {
 	if(edb::v1::get_instruction_bytes(address, buffer, &size)) {
 		return size;
 	}
-	
+
 	return 0;
 }
 
 EDB_EXPORT QString disassemble_address(address_t address);
 
-EDB_EXPORT IBinary *get_binary_info(const IRegion::pointer &region);
+EDB_EXPORT std::unique_ptr<IBinary> get_binary_info(const IRegion::pointer &region);
 EDB_EXPORT const Prototype *get_function_info(const QString &function);
 
 EDB_EXPORT address_t locate_main_function();
 
-EDB_EXPORT const QHash<QString, QObject *> &plugin_list();
+EDB_EXPORT const QMap<QString, QObject *> &plugin_list();
 EDB_EXPORT IPlugin *find_plugin_by_name(const QString &name);
 
 EDB_EXPORT void reload_symbols();
 EDB_EXPORT void repaint_cpu_view();
+EDB_EXPORT void update_ui();
 
 // these are here and not members of state because
 // they may require using the debugger core plugin and
@@ -175,7 +178,7 @@ EDB_EXPORT void push_value(State *state, reg_t value);
 EDB_EXPORT void register_binary_info(IBinary::create_func_ptr_t fptr);
 
 EDB_EXPORT bool overwrite_check(address_t address, unsigned int size);
-EDB_EXPORT void modify_bytes(address_t address, unsigned int size, QByteArray &bytes, quint8 fill);
+EDB_EXPORT bool modify_bytes(address_t address, unsigned int size, QByteArray &bytes, quint8 fill);
 
 EDB_EXPORT QByteArray get_file_md5(const QString &s);
 EDB_EXPORT QByteArray get_md5(const void *p, size_t n);
@@ -189,6 +192,7 @@ EDB_EXPORT QString format_bytes(quint8 byte);
 EDB_EXPORT QString format_pointer(address_t p);
 
 EDB_EXPORT address_t cpu_selected_address();
+EDB_EXPORT void set_cpu_selected_address(address_t address);
 
 EDB_EXPORT void set_status(const QString &message);
 
@@ -196,6 +200,16 @@ EDB_EXPORT int pointer_size();
 
 EDB_EXPORT QVector<quint8> read_pages(address_t address, size_t page_count);
 
+EDB_EXPORT CapstoneEDB::Formatter &formatter();
+
+EDB_EXPORT bool debuggeeIs32Bit();
+EDB_EXPORT bool debuggeeIs64Bit();
+
+EDB_EXPORT address_t selected_stack_address();
+EDB_EXPORT size_t    selected_stack_size();
+
+EDB_EXPORT address_t selected_data_address();
+EDB_EXPORT size_t    selected_data_size();
 }
 }
 

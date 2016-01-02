@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -21,12 +21,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <QSettings>
 #include <QAction>
 #include <QMenu>
+#include <QFileInfo>
+
+namespace {
+const int MaxRecentFiles = 8;
+}
 
 //------------------------------------------------------------------------------
 // Name: RecentFileManager
 // Desc: constructor
 //------------------------------------------------------------------------------
-RecentFileManager::RecentFileManager(QWidget * parent, Qt::WindowFlags f) : QWidget(parent, f), menu_(0) {
+RecentFileManager::RecentFileManager(QWidget *parent, Qt::WindowFlags f) : QWidget(parent, f), menu_(0) {
 	QSettings settings;
 	settings.beginGroup("Recent");
 	file_list_ = settings.value("recent.files", QStringList()).value<QStringList>();
@@ -80,7 +85,7 @@ void RecentFileManager::update() {
 	if(menu_) {
 		menu_->clear();
 
-		Q_FOREACH(const QString &s, file_list_) {
+		for(const QString &s: file_list_) {
 			if(QAction *const action = menu_->addAction(s, this, SLOT(item_selected()))) {
 				action->setData(s);
 			}
@@ -96,9 +101,9 @@ void RecentFileManager::update() {
 // Desc:
 //------------------------------------------------------------------------------
 void RecentFileManager::item_selected() {
-	if(QAction *const action = qobject_cast<QAction *>(sender())) {
+	if(auto action = qobject_cast<QAction *>(sender())) {
 		const QString s = action->data().toString();
-		emit file_selected(s);
+		Q_EMIT file_selected(s);
 	}
 }
 
@@ -107,14 +112,20 @@ void RecentFileManager::item_selected() {
 // Desc:
 //------------------------------------------------------------------------------
 void RecentFileManager::add_file(const QString &file) {
-	// update recent file list
-	if(!file_list_.contains(file)) {
-		file_list_.push_front(file);
 
-		// make sure we don't add more than the max
-		while(file_list_.size() > max_recent_files) {
-			file_list_.pop_back();
-		}
-		update();
+	QFileInfo fi(file);
+	QString path = fi.absoluteFilePath();
+	
+	// update recent file list, we remove all entries for this file (if any)
+	// and then push the file on the front, ensuring that the recently run 
+	// entries are higher in the list
+	file_list_.removeAll(path);
+	file_list_.push_front(path);
+
+	// make sure we don't add more than the max
+	while(file_list_.size() > MaxRecentFiles) {
+		file_list_.pop_back();
 	}
+	update();
+
 }

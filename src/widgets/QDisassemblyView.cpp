@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -42,6 +42,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <climits>
 
 namespace {
+
+struct WidgetState1 {
+	int version;
+	int line1;
+	int line2;
+	int line3;	
+};
 
 const int default_byte_width   = 8;
 const QColor filling_dis_color = Qt::gray;
@@ -85,15 +92,11 @@ struct address_format<T, 4> {
 template <class T>
 struct address_format<T, 8> {
 	static QString format_address(T address, const show_separator_tag&) {
-		static char buffer[18];
-		qsnprintf(buffer, sizeof(buffer), "%08x:%08x", (address >> 32) & 0xffffffff, address & 0xffffffff);
-		return QString::fromLatin1(buffer, sizeof(buffer) - 1);
+		return edb::value32(address >> 32).toHexString()+":"+edb::value32(address).toHexString();
 	}
 
 	static QString format_address(T address) {
-		static char buffer[17];
-		qsnprintf(buffer, sizeof(buffer), "%08x%08x", (address >> 32) & 0xffffffff, address & 0xffffffff);
-		return QString::fromLatin1(buffer, sizeof(buffer) - 1);
+		return edb::value64(address).toHexString();
 	}
 };
 
@@ -120,7 +123,7 @@ bool near_line(int x, int linex) {
 // Desc:
 //------------------------------------------------------------------------------
 int instruction_size(const quint8 *buffer, std::size_t size) {
-	edb::Instruction inst(buffer, buffer + size, 0, std::nothrow);
+	edb::Instruction inst(buffer, buffer + size, 0);
 	return inst.size();
 }
 
@@ -133,13 +136,13 @@ size_t length_disasm_back(const quint8 *buf, size_t size) {
 	quint8 tmp[edb::Instruction::MAX_SIZE * 2];
 	Q_ASSERT(size <= sizeof(tmp));
 
-	int offs = 0;
+	std::size_t offs = 0;
 
 	memcpy(tmp, buf, size);
 
 	while(offs < edb::Instruction::MAX_SIZE) {
 
-		const edb::Instruction inst(tmp + offs, tmp + sizeof(tmp), 0, std::nothrow);
+		const edb::Instruction inst(tmp + offs, tmp + sizeof(tmp), 0);
 		if(!inst) {
 			return 0;
 		}
@@ -192,7 +195,7 @@ QDisassemblyView::QDisassemblyView(QWidget * parent) : QAbstractScrollArea(paren
 		moving_line1_(false),
 		moving_line2_(false),
 		moving_line3_(false),
-		comments_(new QHash<edb::address_t, QString>) {
+		selecting_address_(false) {
 
 
 	setShowAddressSeparator(true);
@@ -272,7 +275,7 @@ edb::address_t QDisassemblyView::previous_instructions(edb::address_t current_ad
 					}
 
 					if(edb::v1::get_instruction_bytes(address, buf, &buf_size)) {
-						const edb::Instruction inst(buf, buf + buf_size, address, std::nothrow);
+						const edb::Instruction inst(buf, buf + buf_size, address);
 						if(!inst) {
 							break;
 						}
@@ -339,7 +342,7 @@ edb::address_t QDisassemblyView::following_instructions(edb::address_t current_a
 			current_address += 1;
 			break;
 		} else {
-			const edb::Instruction inst(buf, buf + buf_size, current_address, std::nothrow);
+			const edb::Instruction inst(buf, buf + buf_size, current_address);
 			if(inst) {
 				current_address += inst.size();
 			} else {
@@ -441,16 +444,19 @@ void QDisassemblyView::setShowAddressSeparator(bool value) {
 // Desc:
 //------------------------------------------------------------------------------
 QString QDisassemblyView::formatAddress(edb::address_t address) const {
-	return format_address(address, show_address_separator_);
+	if(edb::v1::debuggeeIs32Bit())
+		return format_address<quint32>(address.toUint(), show_address_separator_);
+	else
+		return format_address(address, show_address_separator_);
 }
 
 //------------------------------------------------------------------------------
-// Name: repaint
+// Name: update
 // Desc:
 //------------------------------------------------------------------------------
-void QDisassemblyView::repaint() {
-	viewport()->repaint();
-	emit signal_updated();
+void QDisassemblyView::update() {
+	viewport()->update();
+	Q_EMIT signal_updated();
 }
 
 //------------------------------------------------------------------------------
@@ -485,9 +491,9 @@ void QDisassemblyView::setRegion(const IRegion::pointer &r) {
 	if((r && r->compare(region_) != 0) || (!r)) {
 		region_ = r;
 		updateScrollbars();
-		emit regionChanged();
+		Q_EMIT regionChanged();
 	}
-	repaint();
+	update();
 }
 
 //------------------------------------------------------------------------------
@@ -514,32 +520,18 @@ void QDisassemblyView::scrollTo(edb::address_t address) {
 	verticalScrollBar()->setValue(address - address_offset_);
 }
 
-struct intel_lower {
-	typedef edisassm::lower_case   case_type;
-	typedef edisassm::syntax_intel syntax_type;
-};
-
-struct intel_upper {
-	typedef edisassm::upper_case   case_type;
-	typedef edisassm::syntax_intel syntax_type;
-};
-
 //------------------------------------------------------------------------------
 // Name: draw_instruction
 // Desc:
 //------------------------------------------------------------------------------
-int QDisassemblyView::draw_instruction(QPainter &painter, const edb::Instruction &inst, bool upper, int y, int line_height, int l2, int l3) const {
+int QDisassemblyView::draw_instruction(QPainter &painter, const edb::Instruction &inst, int y, int line_height, int l2, int l3) const {
 
 	const bool is_filling = edb::v1::arch_processor().is_filling(inst);
 	int x                 = font_width_ + font_width_ + l2 + (font_width_ / 2);
 	const int ret         = inst.size();
 	
 	if(inst) {
-		QString opcode = QString::fromStdString(
-			upper ?
-				edisassm::to_string(inst, intel_upper()) :
-				edisassm::to_string(inst, intel_lower())
-		);
+		QString opcode = QString::fromStdString(edb::v1::formatter().to_string(inst));
 
 		//return metrics.elidedText(byte_buffer, Qt::ElideRight, maxStringPx);
 
@@ -557,13 +549,7 @@ int QDisassemblyView::draw_instruction(QPainter &painter, const edb::Instruction
 				opcode);
 		} else {
 
-			switch(inst.type()) {
-			case edb::Instruction::OP_JCC:
-			case edb::Instruction::OP_JMP:
-			case edb::Instruction::OP_LOOP:
-			case edb::Instruction::OP_LOOPE:
-			case edb::Instruction::OP_LOOPNE:
-			case edb::Instruction::OP_CALL:
+			if(is_call(inst) || is_jump(inst)) {
 				if(inst.operand_count() != 0) {
 					const edb::Operand &oper = inst.operands()[0];
 					if(oper.general_type() == edb::Operand::TYPE_REL) {
@@ -575,9 +561,6 @@ int QDisassemblyView::draw_instruction(QPainter &painter, const edb::Instruction
 						}
 					}
 				}
-				break;
-			default:
-				break;
 			}
 
 			opcode = painter.fontMetrics().elidedText(opcode, Qt::ElideRight, (l3 - l2) - font_width_ * 2);
@@ -717,7 +700,6 @@ void QDisassemblyView::paintEvent(QPaintEvent *) {
 
 	QPainter painter(viewport());
 
-	const bool uppercase  = edb::v1::config().uppercase_disassembly;
 	const int line_height = qMax(this->line_height(), breakpoint_icon_.height());
 	int viewable_lines    = viewport()->height() / line_height;
 	int current_line      = verticalScrollBar()->value();
@@ -732,27 +714,24 @@ void QDisassemblyView::paintEvent(QPaintEvent *) {
 		return;
 	}
 
-	// TODO: reimplement me
-	// const Configuration::Syntax syntax = edb::v1::config().syntax;
 	const int region_size = region_->size();
 
 	if(region_size == 0) {
 		return;
 	}
-
+	
 	show_addresses_.clear();
 	show_addresses_.insert(address_offset_ + current_line);
 
 	const int bytes_width = l2 - l1;
 
 	const QBrush alternated_base_color = palette().alternateBase();
-	const QBrush bytes_color           = palette().text();
-	const QBrush divider_color         = palette().shadow();
-	const QPen bytes_pen               = bytes_color.color();
-	const QPen divider_pen             = divider_color.color();
+	const QPen divider_pen             = palette().shadow().color();
 	const QPen address_pen(Qt::red);
 
 	IAnalyzer *const analyzer = edb::v1::analyzer();
+	
+	auto binary_info = edb::v1::get_binary_info(region_);
 
 	edb::address_t last_address = 0;
 	
@@ -784,9 +763,9 @@ void QDisassemblyView::paintEvent(QPaintEvent *) {
 
 		// disassemble the instruction, if it happens that the next byte is the start of a known function
 		// then we should treat this like a one byte instruction
-		edb::Instruction inst(buf, buf + buf_size, address, std::nothrow);
+		edb::Instruction inst(buf, buf + buf_size, address);
 		if(analyzer && (analyzer->category(address + 1) == IAnalyzer::ADDRESS_FUNC_START)) {
-			edb::Instruction(buf, buf + 1, address, std::nothrow).swap(inst);
+			edb::Instruction(buf, buf + 1, address).swap(inst);
 		}
 
 		const int inst_size = inst.size();
@@ -796,9 +775,19 @@ void QDisassemblyView::paintEvent(QPaintEvent *) {
 		}
 
 		if(selectedAddress() == address) {
-			painter.fillRect(0, y, width(), line_height, palette().highlight());
+			if(hasFocus()) {
+				painter.fillRect(0, y, width(), line_height, palette().color(QPalette::Active, QPalette::Highlight));
+			} else {
+				painter.fillRect(0, y, width(), line_height, palette().color(QPalette::Inactive, QPalette::Highlight));
+			}
 		} else
 
+#if 1
+		// highlight header of binary
+		if(binary_info && address >= region_->start() && address - region_->start() < binary_info->header_size()) {		
+			painter.fillRect(0, y, width(), line_height, QBrush(Qt::lightGray));
+		} else
+#endif
 		if(row_index & 1) {
 			// draw alternating line backgrounds
 			painter.fillRect(0, y, width(), line_height, alternated_base_color);
@@ -841,7 +830,12 @@ void QDisassemblyView::paintEvent(QPaintEvent *) {
 			address_buffer);
 
 		// draw the data bytes
-		painter.setPen(bytes_pen);
+		if(selectedAddress() != address) {
+			painter.setPen(palette().text().color());
+		} else {
+			painter.setPen(palette().highlightedText().color());
+		}
+
 		painter.drawText(
 			l1 + (font_width_ / 2),
 			y,
@@ -871,12 +865,7 @@ void QDisassemblyView::paintEvent(QPaintEvent *) {
 		}
 
 		// for relative jumps draw the jump direction indicators
-		switch(inst.type()) {
-		case edb::Instruction::OP_JCC:
-		case edb::Instruction::OP_JMP:
-		case edb::Instruction::OP_LOOP:
-		case edb::Instruction::OP_LOOPE:
-		case edb::Instruction::OP_LOOPNE:
+		if(is_jump(inst)) {
 			if(inst.operands()[0].general_type() == edb::Operand::TYPE_REL) {
 				const edb::address_t target = inst.operands()[0].relative_target();
 
@@ -889,18 +878,15 @@ void QDisassemblyView::paintEvent(QPaintEvent *) {
 					QString((target > address) ? QChar(0x02C7) : QChar(0x02C6))
 					);
 			}
-			break;
-		default:
-			break;
 		}
 
 		// draw the disassembly
-		current_line += draw_instruction(painter, inst, uppercase, y, line_height, l2, l3);
+		current_line += draw_instruction(painter, inst, y, line_height, l2, l3);
 		show_addresses_.insert(address);
 		last_address = address;
 
 		//Draw any comments
-		QString comment = comments_->value(address, QString(""));
+		QString comment = comments_.value(address, QString(""));
 		if (!comment.isEmpty()) {
 			painter.drawText(
 						l3 + font_width_ + (font_width_ / 2),
@@ -1023,7 +1009,7 @@ int QDisassemblyView::line3() const {
 // Desc:
 //------------------------------------------------------------------------------
 int QDisassemblyView::address_length() const {
-	const unsigned int address_len = (sizeof(edb::address_t) * CHAR_BIT) / 4;
+	const unsigned int address_len = edb::v1::pointer_size() * CHAR_BIT / 4;
 	return address_len + (show_address_separator_ ? 1 : 0);
 }
 
@@ -1126,8 +1112,8 @@ void QDisassemblyView::mouseDoubleClickEvent(QMouseEvent *event) {
 				const edb::address_t address = addressFromPoint(event->pos());
 
 				if(region_->contains(address)) {
-					emit breakPointToggled(address);
-					repaint();
+					Q_EMIT breakPointToggled(address);
+					update();
 				}
 			}
 		}
@@ -1144,7 +1130,7 @@ bool QDisassemblyView::event(QEvent *event) {
 		if(event->type() == QEvent::ToolTip) {
 			bool show = false;
 
-			const QHelpEvent *const helpEvent = static_cast<QHelpEvent *>(event);
+			auto helpEvent = static_cast<QHelpEvent *>(event);
 
 			if(helpEvent->x() >= line1() && helpEvent->x() < line2()) {
 
@@ -1155,7 +1141,7 @@ bool QDisassemblyView::event(QEvent *event) {
 				// do the longest read we can while still not passing the region end
 				int buf_size = qMin<edb::address_t>((region_->end() - address), sizeof(buf));
 				if(edb::v1::get_instruction_bytes(address, buf, &buf_size)) {
-					const edb::Instruction inst(buf, buf + buf_size, address, std::nothrow);
+					const edb::Instruction inst(buf, buf + buf_size, address);
 
 					if((line1() + (static_cast<int>(inst.size()) * 3) * font_width_) > line2()) {
 						const QString byte_buffer = format_instruction_bytes(inst);
@@ -1182,12 +1168,13 @@ void QDisassemblyView::mouseReleaseEvent(QMouseEvent *event) {
 
 	Q_UNUSED(event);
 
-	moving_line1_ = false;
-	moving_line2_ = false;
-	moving_line3_ = false;
+	moving_line1_      = false;
+	moving_line2_      = false;
+	moving_line3_      = false;
+	selecting_address_ = false;
 
 	setCursor(Qt::ArrowCursor);
-	repaint();
+	update();
 }
 
 //------------------------------------------------------------------------------
@@ -1196,18 +1183,8 @@ void QDisassemblyView::mouseReleaseEvent(QMouseEvent *event) {
 //------------------------------------------------------------------------------
 void QDisassemblyView::updateSelectedAddress(QMouseEvent *event) {
 
-	if(region_) {
-		bool ok;
-		const edb::address_t address = addressFromPoint(event->pos());
-		const int size               = get_instruction_size(address, &ok);
-
-		if(ok) {
-			selected_instruction_address_ = address;
-			selected_instruction_size_    = size;
-		} else {
-			selected_instruction_address_ = 0;
-			selected_instruction_size_    = 0;
-		}
+	if(region_) {		
+		setSelectedAddress(addressFromPoint(event->pos()));
 	}
 }
 
@@ -1227,6 +1204,7 @@ void QDisassemblyView::mousePressEvent(QMouseEvent *event) {
 				moving_line3_ = true;
 			} else {
 				updateSelectedAddress(event);
+				selecting_address_ = true;
 			}
 		} else {
 			updateSelectedAddress(event);
@@ -1250,7 +1228,7 @@ void QDisassemblyView::mouseMoveEvent(QMouseEvent *event) {
 				}
 				line1_ = x_pos;
 			}
-			repaint();
+			update();
 		} else if(moving_line2_) {
 			if(x_pos > line1() + font_width_ && x_pos + 1 < line3()) {
 				if(line3_ == 0) {
@@ -1258,17 +1236,20 @@ void QDisassemblyView::mouseMoveEvent(QMouseEvent *event) {
 				}
 				line2_ = x_pos;
 			}
-			repaint();
+			update();
 		} else if(moving_line3_) {
 			if(x_pos > line2() + font_width_ && x_pos + 1 < width() - (verticalScrollBar()->width() + 3)) {
 				line3_ = x_pos;
 			}
-			repaint();
+			update();
 		} else {
 			if(near_line(x_pos, line1()) || near_line(x_pos, line2()) || near_line(x_pos, line3())) {
 				setCursor(Qt::SplitHCursor);
 			} else {
 				setCursor(Qt::ArrowCursor);
+				if(selecting_address_) {
+					updateSelectedAddress(event);
+				}
 			}
 		}
 	}
@@ -1280,6 +1261,28 @@ void QDisassemblyView::mouseMoveEvent(QMouseEvent *event) {
 //------------------------------------------------------------------------------
 edb::address_t QDisassemblyView::selectedAddress() const {
 	return selected_instruction_address_;
+}
+
+//------------------------------------------------------------------------------
+// Name: setSelectedAddress
+// Desc:
+//------------------------------------------------------------------------------
+void QDisassemblyView::setSelectedAddress(edb::address_t address) {
+
+	if(region_) {
+		bool ok;
+		const int size = get_instruction_size(address, &ok);
+
+		if(ok) {
+			selected_instruction_address_ = address;
+			selected_instruction_size_    = size;
+		} else {
+			selected_instruction_address_ = 0;
+			selected_instruction_size_    = 0;
+		}
+		
+		update();
+	}
 }
 
 //------------------------------------------------------------------------------
@@ -1303,7 +1306,7 @@ IRegion::pointer QDisassemblyView::region() const {
 // Desc: Adds a comment to the comment hash.
 //------------------------------------------------------------------------------
 void QDisassemblyView::add_comment(edb::address_t address, QString comment) {
-	comments_->insert(address, comment);
+	comments_.insert(address, comment);
 }
 
 //------------------------------------------------------------------------------
@@ -1311,7 +1314,7 @@ void QDisassemblyView::add_comment(edb::address_t address, QString comment) {
 // Desc: Removes a comment from the comment hash and returns the number of comments removed.
 //------------------------------------------------------------------------------
 int QDisassemblyView::remove_comment(edb::address_t address) {
-	return comments_->remove(address);
+	return comments_.remove(address);
 }
 
 //------------------------------------------------------------------------------
@@ -1319,7 +1322,7 @@ int QDisassemblyView::remove_comment(edb::address_t address) {
 // Desc: Returns a comment assigned for an address or a blank string if there is none.
 //------------------------------------------------------------------------------
 QString QDisassemblyView::get_comment(edb::address_t address) {
-	return comments_->value(address, QString(""));
+	return comments_.value(address, QString(""));
 }
 
 //------------------------------------------------------------------------------
@@ -1327,5 +1330,43 @@ QString QDisassemblyView::get_comment(edb::address_t address) {
 // Desc: Clears all comments in the comment hash.
 //------------------------------------------------------------------------------
 void QDisassemblyView::clear_comments() {
-	comments_->clear();
+	comments_.clear();
+}
+
+//------------------------------------------------------------------------------
+// Name: saveState
+// Desc: 
+//------------------------------------------------------------------------------
+QByteArray QDisassemblyView::saveState() const {
+
+	const WidgetState1 state = {
+		sizeof(WidgetState1),
+		line1_,
+		line2_,
+		line3_
+	};
+	
+	char buf[sizeof(WidgetState1)];
+	memcpy(buf, &state, sizeof(buf));
+	
+	return QByteArray(buf, sizeof(buf));
+}
+
+//------------------------------------------------------------------------------
+// Name: restoreState
+// Desc: 
+//------------------------------------------------------------------------------
+void QDisassemblyView::restoreState(const QByteArray &stateBuffer) {
+
+	WidgetState1 state;
+	
+	if(stateBuffer.size() >= static_cast<int>(sizeof(WidgetState1))) {
+		memcpy(&state, stateBuffer.data(), sizeof(WidgetState1));
+		
+		if(state.version >= static_cast<int>(sizeof(WidgetState1))) {
+			line1_ = state.line1;
+			line2_ = state.line2;
+			line3_ = state.line3;
+		}
+	}
 }

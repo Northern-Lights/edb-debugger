@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2014 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2014 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -22,15 +22,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <QAbstractItemModel>
 #include <QVector>
 #include "Types.h"
-#include "ThreadInfo.h"
+#include "IThread.h"
 
 class ThreadsModel : public QAbstractItemModel {
 	Q_OBJECT
 
 public:
 	struct Item {
-		ThreadInfo info;
-		bool       current;
+		IThread::pointer thread;
+		bool             current;
 	};
 
 public:
@@ -46,7 +46,7 @@ public:
 	virtual int rowCount(const QModelIndex &parent = QModelIndex()) const;
 
 public:
-	void addThread(const ThreadInfo &info, bool current);
+	void addThread(const IThread::pointer &thread, bool current);
 	void clear();
 
 private:

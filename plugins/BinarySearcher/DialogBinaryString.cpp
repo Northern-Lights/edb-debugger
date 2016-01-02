@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -66,7 +66,7 @@ void DialogBinaryString::do_find() {
 		const edb::address_t page_size = edb::v1::debugger_core->page_size();
 
 		int i = 0;
-		Q_FOREACH(const IRegion::pointer &region, regions) {
+		for(const IRegion::pointer &region: regions) {
 
 			bsa.clear();
 
@@ -95,7 +95,7 @@ void DialogBinaryString::do_find() {
 						const edb::address_t align = 1 << (ui->cmbAlignment->currentIndex() + 1);
 
 						if(!ui->chkAlignment->isChecked() || (addr % align) == 0) {
-							QListWidgetItem *item = new QListWidgetItem(edb::v1::format_pointer(addr));
+							auto item = new QListWidgetItem(edb::v1::format_pointer(addr));
 							item->setData(Qt::UserRole, addr);
 							ui->listWidget->addItem(item);
 						}

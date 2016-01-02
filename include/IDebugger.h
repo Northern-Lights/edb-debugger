@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -23,9 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "IDebugEvent.h"
 #include "IRegion.h"
 #include "IProcess.h"
-#include "ProcessInfo.h"
 #include "Module.h"
-#include "ThreadInfo.h"
 
 #include <QByteArray>
 #include <QHash>
@@ -48,7 +46,7 @@ public:
 public:
 	// system properties
 	virtual edb::address_t      page_size() const = 0;
-	virtual int                 pointer_size() const = 0;
+	virtual std::size_t         pointer_size() const = 0;
 	virtual quint64             cpu_type() const = 0;
 	virtual bool                has_extension(quint64 ext) const = 0;
 	virtual QMap<long, QString> exceptions() const = 0;
@@ -59,12 +57,15 @@ public:
 	virtual QString frame_pointer() const = 0;
 	virtual QString instruction_pointer() const = 0;
 	virtual QString flag_register() const = 0;
-	virtual QString format_pointer(edb::address_t address) const = 0;
-	virtual edb::pid_t parent_pid(edb::pid_t pid) const = 0;
 	
 public:
-	// process properties
-    virtual QList<Module>           loaded_modules() const = 0;
+	// data output
+	virtual QString format_pointer(edb::address_t address) const = 0;
+	
+public:
+	// general process data
+	virtual edb::pid_t parent_pid(edb::pid_t pid) const = 0;
+	virtual QMap<edb::pid_t, IProcess::pointer> enumerate_processes() const = 0;	
 	
 public:
 	// basic process management
@@ -73,19 +74,9 @@ public:
 	virtual bool open(const QString &path, const QString &cwd, const QList<QByteArray> &args, const QString &tty) = 0;
 	virtual IDebugEvent::const_pointer wait_debug_event(int msecs) = 0;
 	virtual void detach() = 0;
-	virtual void get_state(State *state) = 0;
 	virtual void kill() = 0;
-	virtual void pause() = 0;
-	virtual void resume(edb::EVENT_STATUS status) = 0;
+	virtual void get_state(State *state) = 0;	
 	virtual void set_state(const State &state) = 0;
-	virtual void step(edb::EVENT_STATUS status) = 0;
-
-public:
-	// thread support stuff (optional)
-	virtual QList<edb::tid_t> thread_ids() const            { return QList<edb::tid_t>(); }
-	virtual edb::tid_t        active_thread() const         { return static_cast<edb::tid_t>(-1); }
-	virtual void              set_active_thread(edb::tid_t) {}
-	virtual ThreadInfo        get_thread_info(edb::tid_t)   { return ThreadInfo(); }
 
 public:
 	// basic breakpoint managment
@@ -101,9 +92,6 @@ public:
 public:
 	// NULL if not attached
 	virtual IProcess *process() const = 0;
-
-public:
-	virtual QMap<edb::pid_t, ProcessInfo> enumerate_processes() const = 0;
 };
 
 Q_DECLARE_INTERFACE(IDebugger, "EDB.IDebugger/1.0")

@@ -1,3 +1,4 @@
+include(../common.pri)
 LEVEL = ..
 
 include(../qmake/clean-objects.pri)
@@ -6,12 +7,12 @@ include(../qmake/qt5-gui.pri)
 
 TEMPLATE    = app
 TARGET      = edb
-INCLUDEPATH += widgets $$LEVEL/include
+INCLUDEPATH += widgets $$LEVEL/include $$LEVEL/src/capstone-edb/include
 VPATH       += widgets $$LEVEL/include
 
 RESOURCES   = debugger.qrc
 DESTDIR     = ../
-target.path = /bin/
+target.path = $$PREFIX/bin/
 INSTALLS    += target
 QT          += xml xmlpatterns
 
@@ -32,14 +33,22 @@ HEADERS += \
 	DebuggerInternal.h \
 	DialogArguments.h \
 	DialogAttach.h \
+	DialogEditFPU.h \
+	DialogEditGPR.h \
+	DialogEditSIMDRegister.h \
 	DialogInputBinaryString.h \
 	DialogInputValue.h \
 	DialogMemoryRegions.h \
+	DialogOpenProgram.h \
 	DialogOptions.h \
 	DialogPlugins.h \
+	DialogAbout.h \
 	DialogThreads.h \
 	Expression.h \
 	FixedFontSelector.h \
+	Float80Edit.h \
+	FloatX.h \
+	GPREdit.h \
 	HexStringValidator.h \
 	IAnalyzer.h \
 	IBinary.h \
@@ -60,7 +69,6 @@ HEADERS += \
 	Module.h \
 	OSTypes.h \
 	PluginModel.h \
-	ProcessInfo.h \
 	ProcessModel.h \
 	Prototype.h \
 	QDisassemblyView.h \
@@ -97,6 +105,7 @@ FORMS += \
 	DialogOptions.ui \
 	DialogPlugins.ui \
 	DialogThreads.ui \
+	DialogAbout.ui \
 	FixedFontSelector.ui
 
 SOURCES += \
@@ -110,14 +119,22 @@ SOURCES += \
 	Debugger.cpp \
 	DialogArguments.cpp \
 	DialogAttach.cpp \
+	DialogEditFPU.cpp \
+	DialogEditGPR.cpp \
+	DialogEditSIMDRegister.cpp \
 	DialogInputBinaryString.cpp \
 	DialogInputValue.cpp \
 	DialogMemoryRegions.cpp \
+	DialogOpenProgram.cpp \
 	DialogOptions.cpp \
 	DialogPlugins.cpp \
+	DialogAbout.cpp \
 	DialogThreads.cpp \
 	FixedFontSelector.cpp \
+	Float80Edit.cpp \
+	FloatX.cpp \
 	Function.cpp \
+	GPREdit.cpp \
 	HexStringValidator.cpp \
 	Instruction.cpp \
 	LineEdit.cpp \
@@ -149,22 +166,17 @@ SOURCES     += qhexview.cpp
 HEADERS     += qhexview.h QHexView
 
 win32 {
-	win32-msvc*:contains(QMAKE_HOST.arch, x86_64) {
-		VPATH       += $$LEVEL/include/os/win32 arch/x86_64 $$LEVEL/include/arch/x86_64 edisassm
-		INCLUDEPATH += $$LEVEL/include/os/win32 arch/x86_64 $$LEVEL/include/arch/x86_64 edisassm "C:\\Program Files\\boost\\boost_1_51"
-		DEFINES     += _CRT_SECURE_NO_WARNINGS
-		RC_FILE     = edb.rc
-	}
-
-	win32-msvc*:contains(QMAKE_HOST.arch, i[3456]86) {
-		VPATH       += $$LEVEL/include/os/win32 arch/x86 $$LEVEL/include/arch/x86 edisassm
-		INCLUDEPATH += $$LEVEL/include/os/win32 arch/x86 $$LEVEL/include/arch/x86 edisassm "C:\\Program Files\\boost\\boost_1_51"
+	win32-msvc*:contains(QMAKE_HOST.arch, x86_64|i[3456]86) {
+		VPATH       += $$LEVEL/include/os/win32 arch/x86-generic $$LEVEL/include/arch/x86-generic capstone-edb
+		INCLUDEPATH += $$LEVEL/include/os/win32 arch/x86-generic $$LEVEL/include/arch/x86-generic capstone-edb "C:\\Program Files\\boost\\boost_1_51"
 		DEFINES     += _CRT_SECURE_NO_WARNINGS
 		RC_FILE     = edb.rc
 	}
 }
 
 unix {
+	LIBS += -lcapstone
+
 	graph {
 		VPATH       += graph
 		INCLUDEPATH += graph
@@ -177,8 +189,8 @@ unix {
 		DEFINES += DEFAULT_PLUGIN_PATH=$$DEFAULT_PLUGIN_PATH
 	}
 	
-	VPATH       += $$LEVEL/include/os/unix edisassm
-	INCLUDEPATH += $$LEVEL/include/os/unix edisassm
+	VPATH       += $$LEVEL/include/os/unix capstone-edb
+	INCLUDEPATH += $$LEVEL/include/os/unix capstone-edb
 
 	# OS include paths
 	openbsd-* : INCLUDEPATH += /usr/local/include
@@ -186,22 +198,16 @@ unix {
 	
 
 	macx {
-		VPATH       += arch/x86_64 $$LEVEL/include/arch/x86_64
-		INCLUDEPATH += arch/x86_64 $$LEVEL/include/arch/x86_64
+		VPATH       += arch/x86-generic $$LEVEL/include/arch/x86-generic
+		INCLUDEPATH += arch/x86-generic $$LEVEL/include/arch/x86-generic
 	}
 	
-	*-g++-32 {
-		VPATH       += arch/x86 $$LEVEL/include/arch/x86
-		INCLUDEPATH += arch/x86 $$LEVEL/include/arch/x86	
-	} else:*-g++-64 {
-		VPATH       += arch/x86_64 $$LEVEL/include/arch/x86_64
-		INCLUDEPATH += arch/x86_64 $$LEVEL/include/arch/x86_64
-	} else:!macx:contains(QMAKE_HOST.arch, x86_64) {
-		VPATH       += arch/x86_64 $$LEVEL/include/arch/x86_64
-		INCLUDEPATH += arch/x86_64 $$LEVEL/include/arch/x86_64
-	} else:	!macx:contains(QMAKE_HOST.arch, i[3456]86) {
-		VPATH       += arch/x86 $$LEVEL/include/arch/x86
-		INCLUDEPATH += arch/x86 $$LEVEL/include/arch/x86
+	*-g++-* {
+		VPATH       += arch/x86-generic $$LEVEL/include/arch/x86-generic
+		INCLUDEPATH += arch/x86-generic $$LEVEL/include/arch/x86-generic
+	} else:!macx:contains(QMAKE_HOST.arch, x86_64|i[3456]86) {
+		VPATH       += arch/x86-generic $$LEVEL/include/arch/x86-generic
+		INCLUDEPATH += arch/x86-generic $$LEVEL/include/arch/x86-generic
 	}
 
 	*-g++* | *-clang* {
@@ -215,4 +221,7 @@ unix {
 	macx-clang*  : QMAKE_LFLAGS += -rdynamic $$(LDFLAGS)
 	macx-g++*    : QMAKE_LFLAGS += -rdynamic $$(LDFLAGS)
 	openbsd-g++* : QMAKE_LFLAGS += -lkvm -Wl,--export-dynamic $$(LDFLAGS)
+	
+
+	QMAKE_CLEAN += $${DESTDIR}/$${TARGET}
 }

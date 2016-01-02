@@ -21,18 +21,22 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "IRegion.h"
 #include "IThread.h"
+#include "Module.h"
 #include "Types.h"
-#include <QDateTime>
-#include <QSharedPointer>
-#include <QString>
+#include <QList>
+#include <memory>
+
+class QDateTime;
+class QString;
 
 class IProcess {
 public:
-	typedef QSharedPointer<IProcess> pointer;
+	typedef std::shared_ptr<IProcess> pointer;
 public:
 	virtual ~IProcess() {}
 
 public:
+	// legal to call when not attached
 	virtual QDateTime               start_time() const = 0;
 	virtual QList<QByteArray>       arguments() const = 0;
 	virtual QString                 current_working_directory() const = 0;
@@ -42,14 +46,21 @@ public:
 	virtual edb::address_t          code_address() const = 0;
 	virtual edb::address_t          data_address() const = 0;
 	virtual QList<IRegion::pointer> regions() const = 0;
-
+	virtual edb::uid_t              uid() const = 0;
+	virtual QString                 user() const = 0;
+	virtual QString                 name() const = 0;
+	virtual QList<Module>           loaded_modules() const = 0;	
+	
 public:
-	// returns true on success, false on failure, all bytes must be successfully
-	// read/written in order for a success. The debugged application should be stopped
-	// or this will return false immediately.
-	virtual bool write_bytes(edb::address_t address, const void *buf, size_t len) = 0;
-	virtual bool read_bytes(edb::address_t address, void *buf, size_t len) = 0;
-	virtual bool read_pages(edb::address_t address, void *buf, size_t count) = 0;
+	// only legal to call when attached
+	virtual QList<IThread::pointer> threads() const = 0;
+	virtual IThread::pointer        current_thread() const = 0;
+	virtual std::size_t             write_bytes(edb::address_t address, const void *buf, size_t len) = 0;
+	virtual std::size_t             read_bytes(edb::address_t address, void *buf, size_t len) const = 0;
+	virtual std::size_t             read_pages(edb::address_t address, void *buf, size_t count) const = 0;
+	virtual void                    pause() = 0;
+	virtual void                    resume(edb::EVENT_STATUS status) = 0;
+	virtual void                    step(edb::EVENT_STATUS status) = 0;	
 };
 
 #endif

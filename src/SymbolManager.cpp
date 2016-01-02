@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "ISymbolGenerator.h"
 #include "MD5.h"
 #include "edb.h"
+#include "Configuration.h"
 
 #include <QFile>
 #include <QDir>
@@ -34,18 +35,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // Name: SymbolManager
 // Desc:
 //------------------------------------------------------------------------------
-SymbolManager::SymbolManager() : symbol_generator_(0), show_path_notice_(true) {	
+SymbolManager::SymbolManager() : symbol_generator_(0), show_path_notice_(true) {
 }
 
-//------------------------------------------------------------------------------
-// Name: set_symbol_path
-// Desc:
-// Note: as a side effect, this function clears all loaded symbols
-//------------------------------------------------------------------------------
-void SymbolManager::set_symbol_path(const QString &symbol_directory) {
-	symbol_directory_ = symbol_directory;
-	clear();
-}
 
 //------------------------------------------------------------------------------
 // Name: clear
@@ -55,7 +47,8 @@ void SymbolManager::clear() {
 	symbol_files_.clear();
 	symbols_.clear();
 	symbols_by_address_.clear();
-	symbols_by_name_.clear();	
+	symbols_by_file_.clear();
+	symbols_by_name_.clear();
 	labels_.clear();
 	labels_by_name_.clear();
 }
@@ -66,7 +59,9 @@ void SymbolManager::clear() {
 //------------------------------------------------------------------------------
 void SymbolManager::load_symbol_file(const QString &filename, edb::address_t base) {
 
-	if(symbol_directory_.isEmpty()) {
+	const QString symbol_directory = edb::v1::config().symbol_path;
+
+	if(symbol_directory.isEmpty()) {
 		if(show_path_notice_) {
 			qDebug() << "No symbol path specified. Please set it in the preferences to enable symbols.";
 			show_path_notice_ = false;
@@ -74,13 +69,18 @@ void SymbolManager::load_symbol_file(const QString &filename, edb::address_t bas
 		return;
 	}
 
+	if(!symbol_directory.isEmpty()) {
+		QDir symbolPath;
+		symbolPath.mkpath(symbol_directory);
+	}
+
 	const QFileInfo info(filename);
 	const QString name = info.fileName();
 
 	if(!symbol_files_.contains(name)) {
-		const QString map_file = QString("%1/%2.map").arg(symbol_directory_, name);
+		const QString map_file = QString("%1/%2.map").arg(symbol_directory, name);
 
-		if(process_symbol_file(map_file, base, filename)) {
+		if(process_symbol_file(map_file, base, filename, true)) {
 			symbol_files_.insert(name);
 		}
 	}
@@ -91,7 +91,7 @@ void SymbolManager::load_symbol_file(const QString &filename, edb::address_t bas
 // Desc:
 //------------------------------------------------------------------------------
 const Symbol::pointer SymbolManager::find(const QString &name) const {
-	QHash<QString, Symbol::pointer>::const_iterator it = symbols_by_name_.find(name);
+	auto it = symbols_by_name_.find(name);
 	if(it != symbols_by_name_.end()) {
 		return it.value();
 	}
@@ -103,7 +103,7 @@ const Symbol::pointer SymbolManager::find(const QString &name) const {
 // Desc:
 //------------------------------------------------------------------------------
 const Symbol::pointer SymbolManager::find(edb::address_t address) const {
-	QMap<edb::address_t, Symbol::pointer>::const_iterator it = symbols_by_address_.find(address);
+	auto it = symbols_by_address_.find(address);
 	return (it != symbols_by_address_.end()) ? it.value() : Symbol::pointer();
 }
 
@@ -113,7 +113,7 @@ const Symbol::pointer SymbolManager::find(edb::address_t address) const {
 //------------------------------------------------------------------------------
 const Symbol::pointer SymbolManager::find_near_symbol(edb::address_t address) const {
 
-	QMap<edb::address_t, Symbol::pointer>::const_iterator it = symbols_by_address_.lowerBound(address);
+	auto it = symbols_by_address_.lowerBound(address);
 	if(it != symbols_by_address_.end()) {
 
 		// not an exact match, we should backup one
@@ -141,9 +141,10 @@ const Symbol::pointer SymbolManager::find_near_symbol(edb::address_t address) co
 //------------------------------------------------------------------------------
 void SymbolManager::add_symbol(const Symbol::pointer &symbol) {
 	Q_ASSERT(symbol);
-	symbols_.append(symbol);
+	symbols_.push_back(symbol);
 	symbols_by_address_[symbol->address] = symbol;
 	symbols_by_name_[symbol->name]       = symbol;
+	symbols_by_file_[symbol->file].push_back(symbol);
 }
 
 //------------------------------------------------------------------------------
@@ -151,10 +152,10 @@ void SymbolManager::add_symbol(const Symbol::pointer &symbol) {
 // Desc:
 // Note: returning false means 'try again', true means, 'we loaded what we could'
 //------------------------------------------------------------------------------
-bool SymbolManager::process_symbol_file(const QString &f, edb::address_t base, const QString &library_filename) {
+bool SymbolManager::process_symbol_file(const QString &f, edb::address_t base, const QString &library_filename, bool allow_retry) {
 
-	// TODO: support filename starting with "http://" being fetched from a web server
-	// TODO: support symbol files with paths so we can deal with binaries that have
+	// TODO(eteran): support filename starting with "http://" being fetched from a web server
+	// TODO(eteran): support symbol files with paths so we can deal with binaries that have
 	//       conflicting names in different directories
 
 	std::ifstream file(qPrintable(f));
@@ -175,18 +176,39 @@ bool SymbolManager::process_symbol_file(const QString &f, edb::address_t base, c
 
 				if(file_md5 != actual_md5) {
 					qDebug() << "Your symbol file for" << library_filename << "appears to not match the actual file, perhaps you should rebuild your symbols?";
+					const Configuration &config = edb::v1::config();
+					if(config.remove_stale_symbols) {
+						QFile symbolFile(f);
+						symbolFile.remove();
+
+						if(allow_retry) {
+							return process_symbol_file(f, base, library_filename, false);
+						}
+
+					}
+					return false;
 				}
 
 				const QFileInfo info(QString::fromStdString(filename));
 				const QString prefix = info.fileName();
 				char sym_type;
 
-				while(file >> std::hex >> sym_start >> std::hex >> sym_end >> sym_type >> sym_name) {
-					Symbol::pointer sym(new Symbol);
+				while(true) {
+					file >> std::hex >> sym_start >> std::hex >> sym_end >> sym_type;
+					// For symbol name we can't use operator>>() as it may have spaces if demangled
+					// Thus, get the rest of the line as the symbol name
+					std::getline(file,sym_name);
+
+					if(!file) {
+						if(!file.eof()) qWarning() << "WARNING: File" << f << "seems corrupt";
+						break;
+					}
+
+					auto sym = std::make_shared<Symbol>();
 
 					sym->file           = f;
-					sym->name_no_prefix = QString::fromStdString(sym_name);
-					sym->name           = QString("%1::%2").arg(prefix, sym->name_no_prefix);
+					sym->name_no_prefix = QString::fromStdString(sym_name).trimmed();
+					sym->name           = QString("%1!%2").arg(prefix, sym->name_no_prefix);
 					sym->address        = sym_start;
 					sym->size           = sym_end;
 					sym->type           = sym_type;
@@ -239,7 +261,7 @@ void SymbolManager::set_label(edb::address_t address, const QString &label) {
 		labels_by_name_.remove(labels_[address]);
 		labels_.remove(address);
 	} else {
-	
+
 		if(labels_by_name_.contains(label) && labels_by_name_[label] != address) {
 			QMessageBox::warning(
 				edb::v1::debugger_ui,
@@ -248,7 +270,7 @@ void SymbolManager::set_label(edb::address_t address, const QString &label) {
 				);
 			return;
 		}
-	
+
 		labels_[address] = label;
 		labels_by_name_[label] = address;
 	}
@@ -259,17 +281,17 @@ void SymbolManager::set_label(edb::address_t address, const QString &label) {
 // Desc:
 //------------------------------------------------------------------------------
 QString SymbolManager::find_address_name(edb::address_t address) {
-	QHash<edb::address_t, QString>::const_iterator it = labels_.find(address);
+	auto it = labels_.find(address);
 	if(it != labels_.end()) {
 		return it.value();
 	}
-	
+
 	if(const Symbol::pointer sym = find(address)) {
 		return sym->name;
 	}
-	
+
 	return QString();
-	
+
 }
 
 //------------------------------------------------------------------------------
@@ -278,4 +300,12 @@ QString SymbolManager::find_address_name(edb::address_t address) {
 //------------------------------------------------------------------------------
 QHash<edb::address_t, QString> SymbolManager::labels() const {
 	return labels_;
+}
+
+//------------------------------------------------------------------------------
+// Name: files
+// Desc:
+//------------------------------------------------------------------------------
+QList<QString> SymbolManager::files() const {
+	return symbols_by_file_.keys();
 }

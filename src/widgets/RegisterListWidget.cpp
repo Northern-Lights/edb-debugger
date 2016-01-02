@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -78,7 +78,7 @@ void RegisterListWidget::mouseDoubleClickEvent(QMouseEvent *event) {
 // Desc:
 //------------------------------------------------------------------------------
 QTreeWidgetItem *RegisterListWidget::addCategory(const QString &name) {
-	QTreeWidgetItem *const cat = new QTreeWidgetItem(this);
+	auto cat = new QTreeWidgetItem(this);
 	cat->setText(0, name);
 	setItemExpanded(cat, true);
 	return cat;

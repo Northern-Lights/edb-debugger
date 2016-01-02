@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -81,7 +81,7 @@ QString CommentServer::resolve_function_call(QHexView::address_t address, bool *
 	if(IProcess *process = edb::v1::debugger_core->process()) {
 		if(process->read_bytes(address - CALL_MAX_SIZE, buffer, sizeof(buffer))) {
 			for(int i = (CALL_MAX_SIZE - CALL_MIN_SIZE); i >= 0; --i) {
-				edb::Instruction inst(buffer + i, buffer + sizeof(buffer), 0, std::nothrow);
+				edb::Instruction inst(buffer + i, buffer + sizeof(buffer), 0);
 				if(is_call(inst)) {
 					const QString symname = edb::v1::find_function_symbol(address);
 					if(!symname.isEmpty()) {
@@ -134,10 +134,10 @@ QString CommentServer::comment(QHexView::address_t address, int size) const {
 		// if the view is currently looking at words which are a pointer in size
 		// then see if it points to anything...
 		if(size == edb::v1::pointer_size()) {
-			edb::address_t value;
-			if(process->read_bytes(address, &value, sizeof(value))) {
+			edb::address_t value(0);
+			if(process->read_bytes(address, &value, edb::v1::pointer_size())) {
 
-				QHash<quint64, QString>::const_iterator it = custom_comments_.find(value);
+				auto it = custom_comments_.find(value);
 				if(it != custom_comments_.end()) {
 					ret = it.value();
 				} else {

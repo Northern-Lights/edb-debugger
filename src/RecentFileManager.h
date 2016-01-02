@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -40,14 +40,11 @@ public Q_SLOTS:
 	void clear_file_list();
 	void item_selected();
 
-signals:
+Q_SIGNALS:
 	void file_selected(const QString &);
 
 private:
 	void update();
-
-private:
-	static const int max_recent_files = 8;
 
 private:
 	QStringList file_list_;

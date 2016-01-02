@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -76,7 +76,7 @@ void SpecifiedFunctions::do_find() {
 	IAnalyzer *const analyzer = edb::v1::analyzer();
 	QSet<edb::address_t> functions = analyzer->specified_functions();
 	QStringList results;
-	Q_FOREACH(edb::address_t address, functions) {
+	for(edb::address_t address: functions) {
 		results << QString("%1").arg(edb::v1::format_pointer(address));
 	}
 	model_->setStringList(results);

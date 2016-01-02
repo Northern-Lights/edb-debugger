@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "DialogStrings.h"
 #include "Symbol.h"
 
+#include <QDateTime>
 #include <QDebug>
 #include <QDesktopServices>
 #include <QDir>
@@ -47,14 +48,18 @@ namespace {
 
 QString size_to_string(size_t n) {
 
-	if(n < 1000) {
+	static constexpr size_t KiB = 1024;
+	static constexpr size_t MiB = KiB * 1024;
+	static constexpr size_t GiB = MiB * 1024;
+	
+	if(n < KiB) {
 		return QString::number(n);
-	} else if(n < 1000000) {
-		return QString::number(n / 1000) + " KiB";
-	} else if(n < 1000000000) {
-		return QString::number(n / 1000000) + " MiB";
+	} else if(n < MiB) {
+		return QString::number(n / KiB) + " KiB";
+	} else if(n < GiB) {
+		return QString::number(n / MiB) + " MiB";
 	} else {
-		return QString::number(n / 1000000) + " GiB";
+		return QString::number(n / GiB) + " GiB";
 	}
 }
 
@@ -311,7 +316,7 @@ void DialogProcessProperties::updateGeneralPage() {
 	        const QString exe            = process->executable();
 	        const QString cwd            = process->current_working_directory();
 			
-			QSharedPointer<IProcess> parent = process->parent();
+			std::shared_ptr<IProcess> parent = process->parent();
 	        const edb::pid_t parent_pid  = parent ? parent->pid() : 0;
 	        const QString parent_exe     = parent ? parent->executable() : QString();
 			
@@ -345,15 +350,17 @@ void DialogProcessProperties::updateModulePage() {
 	ui->tableModules->clearContents();
 	ui->tableModules->setRowCount(0);
 	if(edb::v1::debugger_core) {
-		const QList<Module> modules = edb::v1::debugger_core->loaded_modules();
-		ui->tableModules->setSortingEnabled(false);
-		Q_FOREACH(const Module &m, modules) {
-			const int row = ui->tableModules->rowCount();
-			ui->tableModules->insertRow(row);
-			ui->tableModules->setItem(row, 0, new QTableWidgetItem(edb::v1::format_pointer(m.base_address)));
-			ui->tableModules->setItem(row, 1, new QTableWidgetItem(m.name));
+		if(IProcess *process = edb::v1::debugger_core->process()) {
+			const QList<Module> modules = process->loaded_modules();
+			ui->tableModules->setSortingEnabled(false);
+			for(const Module &m: modules) {
+				const int row = ui->tableModules->rowCount();
+				ui->tableModules->insertRow(row);
+				ui->tableModules->setItem(row, 0, new QTableWidgetItem(edb::v1::format_pointer(m.base_address)));
+				ui->tableModules->setItem(row, 1, new QTableWidgetItem(m.name));
+			}
+			ui->tableModules->setSortingEnabled(true);
 		}
-		ui->tableModules->setSortingEnabled(true);
 	}
 
 }
@@ -373,7 +380,7 @@ void DialogProcessProperties::updateMemoryPage() {
 		ui->tableMemory->setSortingEnabled(false);
 
 
-		Q_FOREACH(const IRegion::pointer &r, regions) {
+		for(const IRegion::pointer &r: regions) {
 			const int row = ui->tableMemory->rowCount();
 			ui->tableMemory->insertRow(row);
 			ui->tableMemory->setItem(row, 0, new QTableWidgetItem(edb::v1::format_pointer(r->start()))); // address
@@ -451,7 +458,7 @@ void DialogProcessProperties::updateHandles() {
 	if(IProcess *process = edb::v1::debugger_core->process()) {
 		QDir dir(QString("/proc/%1/fd/").arg(process->pid()));
 		const QFileInfoList entries = dir.entryInfoList(QStringList() << "[0-9]*");
-		Q_FOREACH(const QFileInfo &info, entries) {
+		for(const QFileInfo &info: entries) {
 			if(info.isSymLink()) {
 				QString symlink(info.symLinkTarget());
 				const QString type(file_type(symlink));
@@ -470,7 +477,7 @@ void DialogProcessProperties::updateHandles() {
 				ui->tableHandles->insertRow(row);
 
 
-				QTableWidgetItem *const itemFD = new QTableWidgetItem;
+				auto itemFD = new QTableWidgetItem;
 				itemFD->setData(Qt::DisplayRole, info.fileName().toUInt());
 
 				ui->tableHandles->setItem(row, 0, new QTableWidgetItem(type));
@@ -507,7 +514,7 @@ void DialogProcessProperties::on_btnParent_clicked() {
 	if(edb::v1::debugger_core) {
 		if(IProcess *process = edb::v1::debugger_core->process()) {
 		
-			QSharedPointer<IProcess> parent = process->parent();
+			std::shared_ptr<IProcess> parent = process->parent();
 	        const QString parent_exe     = parent ? parent->executable() : QString();					
 
 			QFileInfo info(parent_exe);
@@ -551,8 +558,16 @@ void DialogProcessProperties::on_btnRefreshHandles_clicked() {
 //------------------------------------------------------------------------------
 void DialogProcessProperties::on_btnStrings_clicked() {
 
-	static QDialog *dialog = new DialogStrings(edb::v1::debugger_ui);
+	static auto dialog = new DialogStrings(edb::v1::debugger_ui);
 	dialog->show();
+}
+
+//------------------------------------------------------------------------------
+// Name: on_btnRefreshMemory_clicked
+// Desc:
+//------------------------------------------------------------------------------
+void DialogProcessProperties::on_btnRefreshMemory_clicked() {
+	updateMemoryPage();
 }
 
 //------------------------------------------------------------------------------
@@ -570,17 +585,17 @@ void DialogProcessProperties::on_btnRefreshThreads_clicked() {
 void DialogProcessProperties::updateThreads() {
 	threads_model_->clear();
 
-	QList<edb::tid_t> threads       = edb::v1::debugger_core->thread_ids();
-	const edb::tid_t current_thread = edb::v1::debugger_core->active_thread();
+	if(IProcess *process = edb::v1::debugger_core->process()) {
+	
+		IThread::pointer current = process->current_thread();
+	
+		for(IThread::pointer thread : process->threads()) {
 
-	Q_FOREACH(edb::tid_t thread, threads) {
-	
-		const ThreadInfo info = edb::v1::debugger_core->get_thread_info(thread);
-	
-		if(thread == current_thread) {
-			threads_model_->addThread(info, true);
-		} else {
-			threads_model_->addThread(info, false);
+			if(thread == current) {
+				threads_model_->addThread(thread, true);
+			} else {
+				threads_model_->addThread(thread, false);
+			}		
 		}
 	}
 }

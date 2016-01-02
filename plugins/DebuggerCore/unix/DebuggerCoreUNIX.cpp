@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -31,12 +31,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
-#ifdef EDB_X86_64
-#define EDB_WORDSIZE sizeof(quint64)
-#elif defined(EDB_X86)
-#define EDB_WORDSIZE sizeof(quint32)
-#endif
 
 namespace DebuggerCore {
 
@@ -196,14 +190,6 @@ DebuggerCoreUNIX::DebuggerCoreUNIX() {
 }
 
 
-
-
-
-
-
-
-
-
 //------------------------------------------------------------------------------
 // Name: execute_process
 // Desc:
@@ -213,7 +199,7 @@ void DebuggerCoreUNIX::execute_process(const QString &path, const QString &cwd, 
 	if(::chdir(qPrintable(cwd)) == 0) {
 
 		// allocate space for all the arguments
-		char **const argv_pointers = new char *[args.count() + 2];
+		auto argv_pointers = new char *[args.count() + 2];
 
 		char **p = argv_pointers;
 
@@ -246,19 +232,12 @@ void DebuggerCoreUNIX::execute_process(const QString &path, const QString &cwd, 
 }
 
 //------------------------------------------------------------------------------
-// Name: pointer_size
-// Desc: returns the size of a pointer on this arch
-//------------------------------------------------------------------------------
-int DebuggerCoreUNIX::pointer_size() const {
-	return EDB_WORDSIZE;
-}
-
-//------------------------------------------------------------------------------
 // Name:
 // Desc:
 //------------------------------------------------------------------------------
 QMap<long, QString> DebuggerCoreUNIX::exceptions() const {
 	QMap<long, QString> exceptions;
+
 
 	#ifdef SIGABRT
 		exceptions[SIGABRT] = "SIGABRT";
@@ -350,7 +329,15 @@ QMap<long, QString> DebuggerCoreUNIX::exceptions() const {
 	#ifdef SIGRTMAX
 		exceptions[SIGRTMAX] = "SIGRTMAX";
 	#endif
-
+	#ifdef SIGIO
+		exceptions[SIGIO] = "SIGIO";
+	#endif
+	#ifdef SIGSTKFLT
+		exceptions[SIGSTKFLT] = "SIGSTKFLT";
+	#endif
+	#ifdef SIGWINCH
+		exceptions[SIGWINCH] = "SIGWINCH";
+	#endif
 	return exceptions;
 }
 

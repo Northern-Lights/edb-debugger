@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -41,6 +41,7 @@ public Q_SLOTS:
 	void on_btnRefreshHandles_clicked();
 	void on_btnStrings_clicked();
 	void on_btnRefreshThreads_clicked();
+	void on_btnRefreshMemory_clicked();
 	void on_txtSearchEnvironment_textChanged(const QString &text);
 	
 private:

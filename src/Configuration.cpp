@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -17,6 +17,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "Configuration.h"
+#include "edb.h"
+#include <QCoreApplication>
 #include <QtDebug>
 #include <QSettings>
 #include <QDir>
@@ -59,7 +61,11 @@ void Configuration::read_settings() {
 #ifdef DEFAULT_PLUGIN_PATH
 	const QString default_plugin_path = TOSTRING(DEFAULT_PLUGIN_PATH);
 #else
-	const QString default_plugin_path = QDir().absolutePath();
+	const QString edb_lib_dir=QCoreApplication::applicationDirPath()+(EDB_IS_64_BIT ? "/../lib64/edb" : "/../lib/edb");
+	const QString edb_binary_dir=QCoreApplication::applicationDirPath();
+	// If the binary is in its installation directory, then look for plugins in their installation directory
+	// Otherwise assume that we are in build directory, so the plugins are in the same directory as the binary
+	const QString default_plugin_path = QRegExp(".*/bin/?$").exactMatch(edb_binary_dir) ? edb_lib_dir : edb_binary_dir;
 #endif
 
 	QSettings settings;
@@ -79,22 +85,24 @@ void Configuration::read_settings() {
 	data_show_comments     = settings.value("appearance.data.show_comments.enabled", true).value<bool>();
 	data_word_width        = settings.value("appearance.data.word_width", 1).value<int>();
 	data_row_width         = settings.value("appearance.data.row_width", 16).value<int>();
-	show_address_separator = settings.value("appearance.address_semicolon.enabled", true).value<bool>();
+	show_address_separator = settings.value("appearance.address_colon.enabled", true).value<bool>();
 	settings.endGroup();
 
 	settings.beginGroup("Debugging");
-	initial_breakpoint = static_cast<InitialBreakpoint>(settings.value("debugger.initial_breakpoint", MainSymbol).value<uint>());
-	warn_on_no_exec_bp = settings.value("debugger.BP_NX_warn.enabled", true).value<bool>();
-	find_main          = settings.value("debugger.find_main.enabled", true).value<bool>();
-	min_string_length  = settings.value("debugger.string_min", 4).value<uint>();
-	tty_enabled        = settings.value("debugger.terminal.enabled", true).value<bool>();
-	tty_command        = settings.value("debugger.terminal.command", "/usr/bin/xterm").value<QString>();
+	initial_breakpoint   = static_cast<InitialBreakpoint>(settings.value("debugger.initial_breakpoint", MainSymbol).value<uint>());
+	warn_on_no_exec_bp   = settings.value("debugger.BP_NX_warn.enabled", true).value<bool>();
+	find_main            = settings.value("debugger.find_main.enabled", true).value<bool>();
+	min_string_length    = settings.value("debugger.string_min", 4).value<uint>();
+	tty_enabled          = settings.value("debugger.terminal.enabled", true).value<bool>();
+	tty_command          = settings.value("debugger.terminal.command", "/usr/bin/xterm").value<QString>();
+	remove_stale_symbols = settings.value("debugger.remove_stale_symbols.enabled", true).value<bool>();
 	settings.endGroup();
 
 	settings.beginGroup("Disassembly");
 	syntax                = static_cast<Syntax>(settings.value("disassembly.syntax", Intel).value<uint>());
 	zeros_are_filling     = settings.value("disassembly.zeros_are_filling.enabled", true).value<bool>();
 	uppercase_disassembly = settings.value("disassembly.uppercase.enabled", false).value<bool>();
+	small_int_as_decimal  = settings.value("disassembly.small_int_as_decimal.enabled", false).value<bool>();
 	settings.endGroup();
 
 	settings.beginGroup("Directories");
@@ -111,6 +119,14 @@ void Configuration::read_settings() {
 	if(data_row_width != 1 && data_row_width != 2 && data_row_width != 4 && data_row_width != 8 && data_row_width != 16) {
 		data_row_width = 16;
 	}
+	
+	// Init capstone to some default settings
+	CapstoneEDB::init(EDB_IS_64_BIT);
+	CapstoneEDB::Formatter::FormatOptions options = edb::v1::formatter().options();
+	options.capitalization = uppercase_disassembly ? CapstoneEDB::Formatter::UpperCase : CapstoneEDB::Formatter::LowerCase;
+	options.smallNumFormat = small_int_as_decimal  ? CapstoneEDB::Formatter::SmallNumAsDec : CapstoneEDB::Formatter::SmallNumAsHex;
+	options.syntax=static_cast<CapstoneEDB::Formatter::Syntax>(syntax);
+	edb::v1::formatter().setOptions(options);	
 }
 
 //------------------------------------------------------------------------------
@@ -136,7 +152,7 @@ void Configuration::write_settings() {
 	settings.setValue("appearance.data.show_comments.enabled", data_show_comments);
 	settings.setValue("appearance.data.word_width", data_word_width);
 	settings.setValue("appearance.data.row_width", data_row_width);
-	settings.setValue("appearance.address_semicolon.enabled", show_address_separator);
+	settings.setValue("appearance.address_colon.enabled", show_address_separator);
 	settings.endGroup();
 
 	settings.beginGroup("Debugging");
@@ -146,12 +162,14 @@ void Configuration::write_settings() {
 	settings.setValue("debugger.find_main.enabled", find_main);
 	settings.setValue("debugger.terminal.enabled", tty_enabled);
 	settings.setValue("debugger.terminal.command", tty_command);
+	settings.setValue("debugger.remove_stale_symbols.enabled", remove_stale_symbols);
 	settings.endGroup();
 
 	settings.beginGroup("Disassembly");
 	settings.setValue("disassembly.syntax", syntax);
 	settings.setValue("disassembly.zeros_are_filling.enabled", zeros_are_filling);
 	settings.setValue("disassembly.uppercase.enabled", uppercase_disassembly);
+	settings.setValue("disassembly.small_int_as_decimal.enabled", small_int_as_decimal);
 	settings.endGroup();
 
 	settings.beginGroup("Directories");

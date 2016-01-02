@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -44,12 +44,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <QFileInfo>
 #include <QInputDialog>
 #include <QMessageBox>
-#include <QScopedPointer>
+#include <QLabel>
 
 #include <cctype>
 
 IDebugger *edb::v1::debugger_core = 0;
-QWidget       *edb::v1::debugger_ui   = 0;
+QWidget   *edb::v1::debugger_ui   = 0;
 
 namespace {
 
@@ -57,8 +57,9 @@ namespace {
 
 	QAtomicPointer<IDebugEventHandler> g_DebugEventHandler = 0;
 	QAtomicPointer<IAnalyzer>          g_Analyzer          = 0;
-	QHash<QString, QObject *>          g_GeneralPlugins;
+	QMap<QString, QObject *>           g_GeneralPlugins;
 	BinaryInfoList                     g_BinaryInfoList;
+	CapstoneEDB::Formatter             g_Formatter;
 
 	QHash<QString, edb::Prototype>     g_FunctionDB;
 
@@ -135,7 +136,46 @@ void load_function_db() {
 
 }
 
+QString address_t::toPointerString(bool createdFromNativePointer) const {
+	if(v1::debuggeeIs32Bit()) {
+		return "0x"+toHexString();
+	} else {
+		if(!createdFromNativePointer) // then we don't know value of upper dword
+			return "0x????????"+value32(value_[0]).toHexString();
+		else
+			return "0x"+toHexString();
+	}
+}
+QString address_t::toHexString() const {
+	if(v1::debuggeeIs32Bit()) {
+		if(value_[0]>0xffffffffull) {
+			// Make erroneous bits visible
+			QString string=value64::toHexString();
+			string.insert(8,"]");
+			return "["+string;
+		}
+		return value32(value_[0]).toHexString();
+	}
+	else return value64::toHexString();
+}
+void address_t::normalize() {
+	if(v1::debuggeeIs32Bit())
+		value_[0]&=0xffffffffull;
+}
+
 namespace v1 {
+
+bool debuggeeIs32Bit() { return pointer_size()==sizeof(std::uint32_t); }
+bool debuggeeIs64Bit() { return pointer_size()==sizeof(std::uint64_t); }
+
+//------------------------------------------------------------------------------
+// Name: set_cpu_selected_address
+// Desc:
+//------------------------------------------------------------------------------
+void set_cpu_selected_address(address_t address) {
+	ui()->ui.cpuView->setSelectedAddress(address);
+	ui()->ui.cpuView->update();
+}
 
 //------------------------------------------------------------------------------
 // Name: cpu_selected_address
@@ -160,7 +200,7 @@ IRegion::pointer current_cpu_view_region() {
 void repaint_cpu_view() {
 	Debugger *const gui = ui();
 	Q_ASSERT(gui);
-	gui->ui.cpuView->repaint();
+	gui->ui.cpuView->update();
 }
 
 //------------------------------------------------------------------------------
@@ -328,7 +368,9 @@ QString get_breakpoint_condition(address_t address) {
 // Name: create_breakpoint
 // Desc: adds a breakpoint at a given address
 //------------------------------------------------------------------------------
-void create_breakpoint(address_t address) {
+IBreakpoint::pointer create_breakpoint(address_t address) {
+
+	IBreakpoint::pointer bp;
 
 	memory_regions().sync();
 	if(IRegion::pointer region = memory_regions().find_region(address)) {
@@ -346,7 +388,7 @@ void create_breakpoint(address_t address) {
 		} else {
 			quint8 buffer[Instruction::MAX_SIZE + 1];
 			if(const int size = get_instruction_bytes(address, buffer)) {
-				Instruction inst(buffer, buffer + size, address, std::nothrow);
+				Instruction inst(buffer, buffer + size, address);
 				if(!inst) {
 					ret = QMessageBox::question(
 						0,
@@ -360,8 +402,9 @@ void create_breakpoint(address_t address) {
 			}
 		}
 
+
 		if(ret == QMessageBox::Yes) {
-			debugger_core->add_breakpoint(address);
+			bp = debugger_core->add_breakpoint(address);
 			repaint_cpu_view();
 		}
 
@@ -372,6 +415,8 @@ void create_breakpoint(address_t address) {
 			QT_TRANSLATE_NOOP("edb", "Error Setting Breakpoint"),
 			QT_TRANSLATE_NOOP("edb", "Sorry, but setting a breakpoint which is not in a valid region is not allowed."));
 	}
+	
+	return bp;
 }
 
 //------------------------------------------------------------------------------
@@ -463,7 +508,7 @@ bool get_expression_from_user(const QString &title, const QString prompt, addres
 // Name: get_value_from_user
 // Desc:
 //------------------------------------------------------------------------------
-bool get_value_from_user(reg_t &value) {
+bool get_value_from_user(Register &value) {
 	return get_value_from_user(value, QT_TRANSLATE_NOOP("edb", "Input Value"));
 }
 
@@ -471,14 +516,14 @@ bool get_value_from_user(reg_t &value) {
 // Name: get_value_from_user
 // Desc:
 //------------------------------------------------------------------------------
-bool get_value_from_user(reg_t &value, const QString &title) {
-	static DialogInputValue *const dlg = new DialogInputValue(debugger_ui);
+bool get_value_from_user(Register &value, const QString &title) {
+	static auto dlg = new DialogInputValue(debugger_ui);
 	bool ret = false;
 
 	dlg->setWindowTitle(title);
 	dlg->set_value(value);
 	if(dlg->exec() == QDialog::Accepted) {
-		value = dlg->value();
+		value.setScalarValue(dlg->value());
 		ret = true;
 	}
 
@@ -498,7 +543,7 @@ bool get_binary_string_from_user(QByteArray &value, const QString &title) {
 // Desc:
 //------------------------------------------------------------------------------
 bool get_binary_string_from_user(QByteArray &value, const QString &title, int max_length) {
-	static DialogInputBinaryString *const dlg = new DialogInputBinaryString(debugger_ui);
+	static auto dlg = new DialogInputBinaryString(debugger_ui);
 
 	bool ret = false;
 
@@ -693,13 +738,16 @@ address_t get_variable(const QString &s, bool *ok, ExpressionError *err) {
 		*err = ExpressionError(ExpressionError::UNKNOWN_VARIABLE);
 	}
 
+	// FIXME: should this really return segment base, not selector?
+	// FIXME: if it's really meant to return base, then need to check whether
+	//        State::operator[]() returned valid Register
 	if(reg.name() == "fs") {
-		return state["fs_base"].value<reg_t>();
+		return state["fs_base"].valueAsAddress();
 	} else if(reg.name() == "gs") {
-		return state["gs_base"].value<reg_t>();
+		return state["gs_base"].valueAsAddress();
 	}
 
-	return reg.value<reg_t>();
+	return reg.valueAsAddress();
 }
 
 //------------------------------------------------------------------------------
@@ -716,8 +764,8 @@ address_t get_value(address_t address, bool *ok, ExpressionError *err) {
 	*ok = false;
 
 	if(IProcess *process = edb::v1::debugger_core->process()) {
-		*ok = process->read_bytes(address, &ret, sizeof(ret));
-	
+		*ok = process->read_bytes(address, &ret, edb::v1::pointer_size());
+
 		if(!*ok) {
 			*err = ExpressionError(ExpressionError::CANNOT_READ_MEMORY);
 		}
@@ -738,11 +786,11 @@ bool get_instruction_bytes(address_t address, quint8 *buf, int *size) {
 
 	if(IProcess *process = edb::v1::debugger_core->process()) {
 		bool ok = process->read_bytes(address, buf, *size);
-	
+
 		while(!ok && *size) {
 			ok = process->read_bytes(address, buf, --(*size));
 		}
-		
+
 		return ok;
 	}
 
@@ -755,18 +803,16 @@ bool get_instruction_bytes(address_t address, quint8 *buf, int *size) {
 //       or NULL if none-found.
 // Note: the caller is responsible for deleting the object!
 //------------------------------------------------------------------------------
-IBinary *get_binary_info(const IRegion::pointer &region) {
-	Q_FOREACH(IBinary::create_func_ptr_t f, g_BinaryInfoList) {
-		IBinary *const p = (*f)(region);
+std::unique_ptr<IBinary> get_binary_info(const IRegion::pointer &region) {
+	for(IBinary::create_func_ptr_t f: g_BinaryInfoList) {
+		std::unique_ptr<IBinary> p((*f)(region));
 
 		if(p->validate_header()) {
 			return p;
 		}
-
-		delete p;
 	}
 
-	return 0;
+	return nullptr;
 }
 
 //------------------------------------------------------------------------------
@@ -781,9 +827,7 @@ address_t locate_main_function() {
 			const address_t address = process->code_address();
 			memory_regions().sync();
 			if(IRegion::pointer region = memory_regions().find_region(address)) {
-
-				QScopedPointer<IBinary> binfo(get_binary_info(region));
-				if(binfo) {
+				if(auto binfo = get_binary_info(region)) {
 					const address_t main_func = binfo->calculate_main();
 					if(main_func != 0) {
 						return main_func;
@@ -802,7 +846,7 @@ address_t locate_main_function() {
 // Name: plugin_list
 // Desc:
 //------------------------------------------------------------------------------
-const QHash<QString, QObject *> &plugin_list() {
+const QMap<QString, QObject *> &plugin_list() {
 	return g_GeneralPlugins;
 }
 
@@ -811,7 +855,7 @@ const QHash<QString, QObject *> &plugin_list() {
 // Desc: gets a pointer to a plugin based on it's classname
 //------------------------------------------------------------------------------
 IPlugin *find_plugin_by_name(const QString &name) {
-	Q_FOREACH(QObject *p, g_GeneralPlugins) {
+	for(QObject *p: g_GeneralPlugins) {
 		if(name == p->metaObject()->className()) {
 			return qobject_cast<IPlugin *>(p);
 		}
@@ -833,7 +877,7 @@ void reload_symbols() {
 //------------------------------------------------------------------------------
 const Prototype *get_function_info(const QString &function) {
 
-	QHash<QString, Prototype>::const_iterator it = g_FunctionDB.find(function);
+	auto it = g_FunctionDB.find(function);
 	if(it != g_FunctionDB.end()) {
 		return &(it.value());
 	}
@@ -887,7 +931,7 @@ IRegion::pointer primary_code_region() {
 
 	memory_regions().sync();
 	const QList<IRegion::pointer> r = memory_regions().regions();
-	Q_FOREACH(const IRegion::pointer &region, r) {
+	for(const IRegion::pointer &region: r) {
 		if(region->executable() && region->name() == process_executable) {
 			return region;
 		}
@@ -911,10 +955,10 @@ void pop_value(State *state) {
 //------------------------------------------------------------------------------
 void push_value(State *state, reg_t value) {
 	Q_ASSERT(state);
-	
+
 	if(IProcess *process = edb::v1::debugger_core->process()) {
-		state->adjust_stack(- static_cast<int>(sizeof(reg_t)));	
-		process->write_bytes(state->stack_pointer(), &value, sizeof(reg_t));
+		state->adjust_stack(- static_cast<int>(pointer_size()));
+		process->write_bytes(state->stack_pointer(), &value, pointer_size());
 	}
 }
 
@@ -967,10 +1011,25 @@ bool overwrite_check(address_t address, unsigned int size) {
 }
 
 //------------------------------------------------------------------------------
+// Name: update_ui
+// Desc:
+//------------------------------------------------------------------------------
+void update_ui() {
+	// force a full update
+	Debugger *const gui = ui();
+	Q_ASSERT(gui);
+	gui->update_gui();
+}
+
+//------------------------------------------------------------------------------
 // Name: modify_bytes
 // Desc:
 //------------------------------------------------------------------------------
-void modify_bytes(address_t address, unsigned int size, QByteArray &bytes, quint8 fill) {
+bool modify_bytes(address_t address, unsigned int size, QByteArray &bytes, quint8 fill) {
+
+	if(!edb::v1::overwrite_check(address, size)) {
+		return false;
+	}
 
 	if(IProcess *process = edb::v1::debugger_core->process()) {
 		if(size != 0) {
@@ -978,15 +1037,17 @@ void modify_bytes(address_t address, unsigned int size, QByteArray &bytes, quint
 			while(bytes.size() < static_cast<int>(size)) {
 				bytes.push_back(fill);
 			}
-	
+
 			process->write_bytes(address, bytes.data(), size);
-	
+
 			// do a refresh, not full update
 			Debugger *const gui = ui();
 			Q_ASSERT(gui);
 			gui->refresh_gui();
 		}
 	}
+
+	return true;
 }
 
 //------------------------------------------------------------------------------
@@ -1017,8 +1078,10 @@ QByteArray get_file_md5(const QString &s) {
 	QFile file(s);
 	file.open(QIODevice::ReadOnly);
 	if(file.isOpen()) {
-		const QByteArray file_bytes = file.readAll();
-		return get_md5(file_bytes.data(), file_bytes.size());
+		if(file.size() != 0) {
+			const QByteArray file_bytes = file.readAll();
+			return get_md5(file_bytes.data(), file_bytes.size());
+		}
 	}
 
 	return QByteArray();
@@ -1066,7 +1129,7 @@ QStringList parse_command_line(const QString &cmdline) {
 	int bcount = 0;
 	bool in_quotes = false;
 
-	QString::const_iterator s = cmdline.begin();
+	auto s = cmdline.begin();
 
 	while(s != cmdline.end()) {
 		if(!in_quotes && s->isSpace()) {
@@ -1127,11 +1190,9 @@ QStringList parse_command_line(const QString &cmdline) {
 // Desc:
 //------------------------------------------------------------------------------
 address_t string_to_address(const QString &s, bool *ok) {
-#if defined(EDB_X86)
-	return s.left(8).toULongLong(ok, 16);
-#elif defined(EDB_X86_64)
-	return s.left(16).toULongLong(ok, 16);
-#endif
+	QString hex(s);
+	hex.replace("0x","");
+	return edb::address_t::fromHexString(hex.left(2*sizeof(edb::address_t)),ok);
 }
 
 //------------------------------------------------------------------------------
@@ -1144,7 +1205,7 @@ QString format_bytes(const QByteArray &x) {
 	if(!x.isEmpty()) {
 		bytes.reserve(x.size() * 4);
 
-		QByteArray::const_iterator it = x.begin();
+		auto it = x.begin();
 
 		char buf[4];
 		qsnprintf(buf, sizeof(buf), "%02x", *it++ & 0xff);
@@ -1199,7 +1260,7 @@ address_t current_data_view_address() {
 // Desc:
 //------------------------------------------------------------------------------
 void set_status(const QString &message) {
-	ui()->ui.statusbar->showMessage(message, 0);
+	ui()->ui.statusbar->showMessage(message, 2000);
 }
 
 //------------------------------------------------------------------------------
@@ -1270,13 +1331,78 @@ QVector<quint8> read_pages(address_t address, size_t page_count) {
 QString disassemble_address(address_t address) {
 	quint8 buffer[edb::Instruction::MAX_SIZE];
 	if(const int size = edb::v1::get_instruction_bytes(address, buffer)) {
-		edb::Instruction inst(buffer, buffer + size, address, std::nothrow);
+		edb::Instruction inst(buffer, buffer + size, address);
 		if(inst) {
-			return QString::fromStdString(to_string(inst));
+			return QString::fromStdString(g_Formatter.to_string(inst));
+		}
+	}
+
+	return QString();
+}
+
+//------------------------------------------------------------------------------
+// Name: formatter
+// Desc: returns a reference to the global instruction formatter
+//------------------------------------------------------------------------------
+CapstoneEDB::Formatter &formatter() {
+	return g_Formatter;
+}
+
+//------------------------------------------------------------------------------
+// Name: selected_stack_address
+// Desc: returns the address of the selection or (address_t)-1
+//------------------------------------------------------------------------------
+address_t selected_stack_address() {
+
+	if(auto hexview = qobject_cast<QHexView *>(ui()->ui.stackDock->widget())) {
+		if(hexview->hasSelectedText()) {
+			return hexview->selectedBytesAddress();
 		}
 	}
 	
-	return QString();
+	return static_cast<address_t>(-1);
+}
+
+//------------------------------------------------------------------------------
+// Name: selected_stack_size
+// Desc: returns the size of the selection or 0
+//------------------------------------------------------------------------------
+size_t selected_stack_size() {
+	if(auto hexview = qobject_cast<QHexView *>(ui()->ui.stackDock->widget())) {
+		if(hexview->hasSelectedText()) {
+			return hexview->selectedBytesSize();
+		}
+	}
+	
+	return 0;
+}
+
+//------------------------------------------------------------------------------
+// Name: selected_stack_address
+// Desc: returns the address of the selection or (address_t)-1
+//------------------------------------------------------------------------------
+address_t selected_data_address() {
+	if(auto hexview = qobject_cast<QHexView *>(ui()->ui.tabWidget->currentWidget())) {
+		if(hexview->hasSelectedText()) {
+			return hexview->selectedBytesAddress();
+		}
+	}
+	
+	return static_cast<address_t>(-1);
+}
+
+//------------------------------------------------------------------------------
+// Name: selected_data_size
+// Desc: returns the size of the selection or 0
+//------------------------------------------------------------------------------
+size_t selected_data_size() {
+	if(auto hexview = qobject_cast<QHexView *>(ui()->ui.tabWidget->currentWidget())) {
+		if(hexview->hasSelectedText()) {
+			return hexview->selectedBytesSize();
+		}
+	}
+	
+	return 0;
 }
 
 }

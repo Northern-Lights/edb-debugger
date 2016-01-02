@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -26,13 +26,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 namespace DebuggerCore {
 
 namespace native {
-	int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
-	int select_ex(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, quint64 msecs);
-	pid_t waitpid(pid_t pid, int *status, int options);
-	pid_t waitpid_timeout(pid_t pid, int *status, int options, int msecs, bool *timeout);
-	ssize_t read(int fd, void *buf, size_t count);
-	ssize_t write(int fd, const void *buf, size_t count);
-	bool wait_for_sigchld(int msecs);
+
+int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
+int select_ex(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, quint64 msecs);
+pid_t waitpid(pid_t pid, int *status, int options);
+pid_t waitpid_timeout(pid_t pid, int *status, int options, int msecs, bool *timeout);
+ssize_t read(int fd, void *buf, size_t count);
+ssize_t write(int fd, const void *buf, size_t count);
+bool wait_for_sigchld(int msecs);
+
 }
 
 class DebuggerCoreUNIX : public DebuggerCoreBase {
@@ -44,17 +46,7 @@ protected:
 	void execute_process(const QString &path, const QString &cwd, const QList<QByteArray> &args);
 
 public:
-	virtual int pointer_size() const;
 	virtual QMap<long, QString> exceptions() const;
-
-protected:
-	virtual long read_data(edb::address_t address, bool *ok) = 0;
-	virtual bool write_data(edb::address_t address, long value) = 0;
-	
-protected:
-	void SET_OK(bool &ok, long value) {
-		ok = (value != -1) || (errno == 0);
-	}
 };
 
 }

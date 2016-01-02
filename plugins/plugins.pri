@@ -40,6 +40,8 @@ unix {
 	} else:!macx:contains(QMAKE_HOST.arch, i[3456]86) {		
 		include(plugins-x86.pri)
 	}
+	
+	QMAKE_CLEAN += $${DESTDIR}/$${QMAKE_PREFIX_SHLIB}$${TARGET}.so
 }
 
 win32 {

@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -31,8 +31,20 @@ PlatformEvent::PlatformEvent() : pid_(0), tid_(0), status_(0) {
 //------------------------------------------------------------------------------
 // Name:
 //------------------------------------------------------------------------------
-PlatformEvent *PlatformEvent::clone() const {
+IDebugEvent *PlatformEvent::clone() const {
 	return new PlatformEvent(*this);
+}
+
+//------------------------------------------------------------------------------
+// Name:
+//------------------------------------------------------------------------------
+IDebugEvent::Message PlatformEvent::createUnexpectedSignalMessage(const QString &name, int number) {
+	return Message(
+		tr("Unexpected Signal Encountered"),
+		tr(
+			"<p>The debugged application encountered a %1 (%2).</p>"
+			"<p>If you would like to pass this exception to the application press Shift+[F7/F8/F9]</p>").arg(name).arg(number)
+		);
 }
 
 //------------------------------------------------------------------------------
@@ -41,16 +53,37 @@ PlatformEvent *PlatformEvent::clone() const {
 IDebugEvent::Message PlatformEvent::error_description() const {
 	Q_ASSERT(is_error());
 
-	const edb::address_t fault_address = reinterpret_cast<edb::address_t>(siginfo_.si_addr);
+	auto fault_address = edb::address_t::fromZeroExtended(siginfo_.si_addr);
+
+	std::size_t debuggeePtrSize=edb::v1::pointer_size();
+	bool fullAddressKnown=debuggeePtrSize<=sizeof(void*);
 
 	switch(code()) {
 	case SIGSEGV:
-		return Message(
-			tr("Illegal Access Fault"),
-			tr(
-				"<p>The debugged application encountered a segmentation fault.<br />The address <strong>0x%1</strong> could not be accessed.</p>"
-				"<p>If you would like to pass this exception to the application press Shift+[F7/F8/F9]</p>").arg(edb::v1::format_pointer(fault_address))
-			);
+		switch(siginfo_.si_code) {
+		case SEGV_MAPERR:
+			return Message(
+				tr("Illegal Access Fault"),
+				tr(
+					"<p>The debugged application encountered a segmentation fault.<br />The address <strong>%1</strong> does not appear to be mapped.</p>"
+					"<p>If you would like to pass this exception to the application press Shift+[F7/F8/F9]</p>").arg(fault_address.toPointerString(fullAddressKnown))
+				);
+		case SEGV_ACCERR:
+			return Message(
+				tr("Illegal Access Fault"),
+				tr(
+					"<p>The debugged application encountered a segmentation fault.<br />The address <strong>%1</strong> could not be accessed.</p>"
+					"<p>If you would like to pass this exception to the application press Shift+[F7/F8/F9]</p>").arg(fault_address.toPointerString(fullAddressKnown))
+				);
+		default:
+			return Message(
+				tr("Illegal Access Fault"),
+				tr(
+					"<p>The debugged application encountered a segmentation fault.<br />The instruction could not be executed.</p>"
+					"<p>If you would like to pass this exception to the application press Shift+[F7/F8/F9]</p>")
+				);
+		}
+
 	case SIGILL:
 		return Message(
 			tr("Illegal Instruction Fault"),
@@ -64,7 +97,42 @@ IDebugEvent::Message PlatformEvent::error_description() const {
 		return Message(
 			tr("Divide By Zero"),
 			tr(
-				"<p>The debugged application tried to divide an integer value by an integer divisor of zero.</p>"
+				"<p>The debugged application tried to divide an integer value by an integer divisor of zero or encountered integer division overflow.</p>"
+				"<p>If you would like to pass this exception to the application press Shift+[F7/F8/F9]</p>")
+			);
+		case FPE_FLTDIV:
+		return Message(
+			tr("Divide By Zero"),
+			tr(
+				"<p>The debugged application tried to divide an floating-point value by a floating-point divisor of zero.</p>"
+				"<p>If you would like to pass this exception to the application press Shift+[F7/F8/F9]</p>")
+			);
+		case FPE_FLTOVF:
+		return Message(
+			tr("Numeric Overflow"),
+			tr(
+				"<p>The debugged application encountered a numeric overflow while performing a floating-point computation.</p>"
+				"<p>If you would like to pass this exception to the application press Shift+[F7/F8/F9]</p>")
+			);
+		case FPE_FLTUND:
+		return Message(
+			tr("Numeric Underflow"),
+			tr(
+				"<p>The debugged application encountered a numeric underflow while performing a floating-point computation.</p>"
+				"<p>If you would like to pass this exception to the application press Shift+[F7/F8/F9]</p>")
+			);
+		case FPE_FLTRES:
+		return Message(
+			tr("Inexact Result"),
+			tr(
+				"<p>The debugged application encountered an inexact result of a floating-point computation it was performing.</p>"
+				"<p>If you would like to pass this exception to the application press Shift+[F7/F8/F9]</p>")
+			);
+		case FPE_FLTINV:
+		return Message(
+			tr("Invalid Operation"),
+			tr(
+				"<p>The debugged application attempted to perform an invalid floating-point operation.</p>"
 				"<p>If you would like to pass this exception to the application press Shift+[F7/F8/F9]</p>")
 			);
 		default:
@@ -87,7 +155,7 @@ IDebugEvent::Message PlatformEvent::error_description() const {
 		return Message(
 			tr("Bus Error"),
 			tr(
-				"<p>The debugged application tried to read or write data that is misaligned.</p>"
+				"<p>The debugged application received a bus error. Typically, this means that it tried to read or write data that is misaligned.</p>"
 				"<p>If you would like to pass this exception to the application press Shift+[F7/F8/F9]</p>")
 			);
 #ifdef SIGSTKFLT
@@ -106,6 +174,94 @@ IDebugEvent::Message PlatformEvent::error_description() const {
 				"<p>The debugged application encountered a broken pipe fault.</p>"
 				"<p>If you would like to pass this exception to the application press Shift+[F7/F8/F9]</p>")
 			);
+#ifdef SIGHUP
+	case SIGHUP:
+		return createUnexpectedSignalMessage("SIGHUP", SIGHUP);
+#endif
+#ifdef SIGINT
+	case SIGINT:
+		return createUnexpectedSignalMessage("SIGINT", SIGINT);
+#endif
+#ifdef SIGQUIT
+	case SIGQUIT:
+		return createUnexpectedSignalMessage("SIGQUIT", SIGQUIT);
+#endif
+#ifdef SIGTRAP
+	case SIGTRAP:
+		return createUnexpectedSignalMessage("SIGTRAP", SIGTRAP);
+#endif
+#ifdef SIGKILL
+	case SIGKILL:
+		return createUnexpectedSignalMessage("SIGKILL", SIGKILL);
+#endif
+#ifdef SIGUSR1
+	case SIGUSR1:
+		return createUnexpectedSignalMessage("SIGUSR1", SIGUSR1);
+#endif
+#ifdef SIGUSR2
+	case SIGUSR2:
+		return createUnexpectedSignalMessage("SIGUSR2", SIGUSR2);
+#endif
+#ifdef SIGALRM
+	case SIGALRM:
+		return createUnexpectedSignalMessage("SIGALRM", SIGALRM);
+#endif
+#ifdef SIGTERM
+	case SIGTERM:
+		return createUnexpectedSignalMessage("SIGTERM", SIGTERM);
+#endif
+#ifdef SIGCHLD
+	case SIGCHLD:
+		return createUnexpectedSignalMessage("SIGCHLD", SIGCHLD);
+#endif
+#ifdef SIGCONT
+	case SIGCONT:
+		return createUnexpectedSignalMessage("SIGCONT", SIGCONT);
+#endif
+#ifdef SIGSTOP
+	case SIGSTOP:
+		return createUnexpectedSignalMessage("SIGSTOP", SIGSTOP);
+#endif
+#ifdef SIGTSTP
+	case SIGTSTP:
+		return createUnexpectedSignalMessage("SIGTSTP", SIGTSTP);
+#endif
+#ifdef SIGTTIN
+	case SIGTTIN:
+		return createUnexpectedSignalMessage("SIGTTIN", SIGTTIN);
+#endif
+#ifdef SIGTTOU
+	case SIGTTOU:
+		return createUnexpectedSignalMessage("SIGTTOU", SIGTTOU);
+#endif
+#ifdef SIGURG
+	case SIGURG:
+		return createUnexpectedSignalMessage("SIGURG", SIGURG);
+#endif
+#ifdef SIGXCPU
+	case SIGXCPU:
+		return createUnexpectedSignalMessage("SIGXCPU", SIGXCPU);
+#endif
+#ifdef SIGXFSZ
+	case SIGXFSZ:
+		return createUnexpectedSignalMessage("SIGXFSZ", SIGXFSZ);
+#endif
+#ifdef SIGVTALRM
+	case SIGVTALRM:
+		return createUnexpectedSignalMessage("SIGVTALRM", SIGVTALRM);
+#endif
+#ifdef SIGPROF
+	case SIGPROF:
+		return createUnexpectedSignalMessage("SIGPROF", SIGPROF);
+#endif
+#ifdef SIGWINCH
+	case SIGWINCH:
+		return createUnexpectedSignalMessage("SIGWINCH", SIGWINCH);
+#endif
+#ifdef SIGIO
+	case SIGIO:
+		return createUnexpectedSignalMessage("SIGIO", SIGIO);
+#endif
 	default:
 		return Message();
 	}

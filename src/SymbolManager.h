@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -38,24 +38,24 @@ public:
 	virtual void clear();
 	virtual void load_symbol_file(const QString &filename, edb::address_t base);
 	virtual void set_symbol_generator(ISymbolGenerator *generator);
-	virtual void set_symbol_path(const QString &symbol_directory);
 	virtual void set_label(edb::address_t address, const QString &label);
 	virtual QString find_address_name(edb::address_t address);
 	virtual QHash<edb::address_t, QString> labels() const;
+	virtual QList<QString> files() const;
 
 private:
-	bool process_symbol_file(const QString &f, edb::address_t base, const QString &library_filename);
+	bool process_symbol_file(const QString &f, edb::address_t base, const QString &library_filename, bool allow_retry);
 
 private:
-	QString                               symbol_directory_;
-	QSet<QString>                         symbol_files_;
-	QList<Symbol::pointer>                symbols_;
-	QMap<edb::address_t, Symbol::pointer> symbols_by_address_;
-	QHash<QString, Symbol::pointer>       symbols_by_name_;
-	ISymbolGenerator                     *symbol_generator_;
-	bool                                  show_path_notice_;
-	QHash<edb::address_t, QString>        labels_;
-	QHash<QString, edb::address_t>        labels_by_name_;
+	QSet<QString>                          symbol_files_;
+	QList<Symbol::pointer>                 symbols_;
+	QMap<edb::address_t, Symbol::pointer>  symbols_by_address_;
+	QHash<QString, QList<Symbol::pointer>> symbols_by_file_;
+	QHash<QString, Symbol::pointer>        symbols_by_name_;
+	ISymbolGenerator                      *symbol_generator_;
+	bool                                   show_path_notice_;
+	QHash<edb::address_t, QString>         labels_;
+	QHash<QString, edb::address_t>         labels_by_name_;
 	
 };
 

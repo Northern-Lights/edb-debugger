@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -17,6 +17,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "BasicBlock.h"
+#include "edb.h"
+#include <QString>
+#include <QTextStream>
 
 //------------------------------------------------------------------------------
 // Name: BasicBlock
@@ -182,7 +185,7 @@ BasicBlock::const_reference BasicBlock::back() const {
 //------------------------------------------------------------------------------
 BasicBlock::size_type BasicBlock::byte_size() const {
 	size_type n = 0;
-	Q_FOREACH(const instruction_pointer &inst, instructions_) {
+	for(const instruction_pointer &inst: instructions_) {
 		n += inst->size();
 	}
 	return n;
@@ -202,4 +205,19 @@ edb::address_t BasicBlock::first_address() const {
 edb::address_t BasicBlock::last_address() const {
 	Q_ASSERT(!empty());
 	return back()->rva() + back()->size();
+}
+
+//------------------------------------------------------------------------------
+// Name: toString
+//------------------------------------------------------------------------------
+QString BasicBlock::toString() const {
+	QString text;
+	QTextStream ts(&text);
+
+	for(auto it = begin(); it != end(); ++it) {
+		const instruction_pointer &inst = *it;
+		ts << edb::address_t(inst->rva()).toPointerString() << ": " << edb::v1::formatter().to_string(*inst).c_str() << "\n";
+	}
+	
+	return text;
 }

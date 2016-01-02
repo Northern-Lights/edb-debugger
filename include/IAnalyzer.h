@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -44,6 +44,7 @@ public:
 public:
 	virtual AddressCategory category(edb::address_t address) const = 0;
 	virtual FunctionMap functions(const IRegion::pointer &region) const = 0;
+	virtual FunctionMap functions() const = 0;
 	virtual QSet<edb::address_t> specified_functions() const { return QSet<edb::address_t>(); }
 	virtual edb::address_t find_containing_function(edb::address_t address, bool *ok) const = 0;
 	virtual void analyze(const IRegion::pointer &region) = 0;

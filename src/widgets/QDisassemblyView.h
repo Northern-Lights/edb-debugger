@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -59,8 +59,11 @@ public:
 	int remove_comment(edb::address_t address);
 	QString get_comment(edb::address_t address);
 	void clear_comments();
+	void setSelectedAddress(edb::address_t address);
+	QByteArray saveState() const;
+	void restoreState(const QByteArray &stateBuffer);
 
-signals:
+Q_SIGNALS:
 	void signal_updated();
 
 public Q_SLOTS:
@@ -71,7 +74,7 @@ public Q_SLOTS:
 	void setRegion(const IRegion::pointer &r);
 	void setCurrentAddress(edb::address_t address);
 	void clear();
-	void repaint();
+	void update();
 	void setShowAddressSeparator(bool value);
 
 private Q_SLOTS:
@@ -89,7 +92,7 @@ private:
 	edb::address_t following_instructions(edb::address_t current_address, int count);
 	int address_length() const;
 	int auto_line1() const;
-	int draw_instruction(QPainter &painter, const edb::Instruction &inst, bool upper, int y, int line_height, int l2, int l3) const;
+	int draw_instruction(QPainter &painter, const edb::Instruction &inst, int y, int line_height, int l2, int l3) const;
 	int get_instruction_size(edb::address_t address, bool *ok) const;
 	int get_instruction_size(edb::address_t address, bool *ok, quint8 *buf, int *size) const;
 	int line1() const;
@@ -119,8 +122,9 @@ private:
 	bool                              moving_line1_;
 	bool                              moving_line2_;
 	bool                              moving_line3_;
+	bool                              selecting_address_;
 	bool                              show_address_separator_;
-	QHash<edb::address_t, QString>    *comments_;
+	QHash<edb::address_t, QString>    comments_;
 };
 
 #endif

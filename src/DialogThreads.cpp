@@ -1,6 +1,6 @@
 /*
-Copyright (C) 2006 - 2014 Evan Teran
-                          eteran@alum.rit.edu
+Copyright (C) 2006 - 2015 Evan Teran
+                          evan.teran@gmail.com
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -57,36 +57,33 @@ DialogThreads::~DialogThreads() {
 void DialogThreads::showEvent(QShowEvent *) {
 
 	threads_model_->clear();
-
-	QList<edb::tid_t> threads       = edb::v1::debugger_core->thread_ids();
-	const edb::tid_t current_thread = edb::v1::debugger_core->active_thread();
-
-	Q_FOREACH(edb::tid_t thread, threads) {
 	
-		const ThreadInfo info = edb::v1::debugger_core->get_thread_info(thread);
-	
-		if(thread == current_thread) {
-			threads_model_->addThread(info, true);
-		} else {
-			threads_model_->addThread(info, false);
+	if(IProcess *process = edb::v1::debugger_core->process()) {
+		IThread::pointer current = process->current_thread();
+		
+		for(IThread::pointer thread : process->threads()) {
+
+			if(thread == current) {
+				threads_model_->addThread(thread, true);
+			} else {
+				threads_model_->addThread(thread, false);
+			}		
 		}
 	}
-	
+
 	ui->thread_table->horizontalHeader()->resizeSections(QHeaderView::Stretch);
 }
 
 //------------------------------------------------------------------------------
-// Name: selected_thread
+// Name: on_thread_table_doubleClicked
 // Desc:
 //------------------------------------------------------------------------------
-edb::tid_t DialogThreads::selected_thread() {
-	const QItemSelectionModel *const selModel = ui->thread_table->selectionModel();
-	const QModelIndexList sel = selModel->selectedRows();
-
-	if(sel.size() == 1) {
-		const QModelIndex index = threads_filter_->mapToSource(sel[0]);
-		return threads_model_->data(index, Qt::UserRole).toUInt();
-	}
+void DialogThreads::on_thread_table_doubleClicked(const QModelIndex &index) {
 	
-	return 0;
+	const QModelIndex internal_index = threads_filter_->mapToSource(index);
+	if(auto item = reinterpret_cast<ThreadsModel::Item *>(internal_index.internalPointer())) {
+		if(IThread::pointer thread = item->thread) {
+			edb::v1::jump_to_address(thread->instruction_pointer());
+		}
+	}
 }

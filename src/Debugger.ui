@@ -199,6 +199,9 @@
    <property name="text">
     <string>&amp;Open</string>
    </property>
+   <property name="shortcut">
+    <string>F3</string>
+   </property>
   </action>
   <action name="action_Attach">
    <property name="text">
@@ -208,6 +211,9 @@
   <action name="actionE_xit">
    <property name="text">
     <string>E&amp;xit</string>
+   </property>
+   <property name="shortcut">
+    <string>Alt+X</string>
    </property>
   </action>
   <action name="action_Memory_Regions">
@@ -262,6 +268,9 @@
    </property>
    <property name="text">
     <string>&amp;Restart</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+F2</string>
    </property>
   </action>
   <action name="action_Detach">
@@ -324,17 +333,6 @@
     <string>F1</string>
    </property>
   </action>
-  <action name="action_Toggle_Breakpoint">
-   <property name="enabled">
-    <bool>false</bool>
-   </property>
-   <property name="text">
-    <string>&amp;Toggle Breakpoint</string>
-   </property>
-   <property name="shortcut">
-    <string>F2</string>
-   </property>
-  </action>
   <action name="action_Configure_Debugger">
    <property name="text">
     <string>&amp;Preferences</string>
@@ -361,6 +359,9 @@
    </property>
    <property name="text">
     <string>Run &amp;Until Return</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+F9</string>
    </property>
   </action>
   <action name="action_Step_Into_Pass_Signal_To_Application">
